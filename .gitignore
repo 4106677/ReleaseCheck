@@ -9,3 +9,6 @@ coverage/
 .artifacts/
 playwright-report/
 test-results/
+.local/
+*.tsbuildinfo
+.idea/

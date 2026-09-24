@@ -1,6 +1,8 @@
 # Архитектура ReleaseCheck
 
-Статус: выбранное направление для MVP, реализация ещё не начата.
+Статус: архитектура утверждена пользователем; реализован первый локальный
+сквозной путь. Документ описывает целевой MVP. Текущие возможности и отличия
+перечислены в [local-development.md](local-development.md).
 Дата: 24 сентября 2026 года. Подробные компромиссы — в [decisions.md](decisions.md).
 
 ## Состав системы
@@ -75,23 +77,23 @@ fixtures/
 docs/
 ```
 
-Это план, а не уже созданные приложения. Пакет появляется вместе с первым
-реальным потребителем. Используем npm workspaces и единый lockfile; отдельный
+Приложения и пакеты созданы для первого сквозного сценария. Дальнейшие модули
+появляются вместе с первым реальным потребителем. Используем npm workspaces и единый lockfile; отдельный
 оркестратор monorepo пока не нужен. Направление зависимостей: apps → packages;
 contracts не зависит от БД, checks не зависит от web или API.
 
 ## Основные сущности
 
-| Сущность | Основные данные и инварианты |
-| --- | --- |
-| User / Session | Владелец и серверная сессия; cookie HttpOnly, Secure в production |
-| Project | ownerId, name, разрешённый origin; доступ всегда проверяется по ownerId |
-| Page | projectId, path, порядок; максимум 5 активных страниц |
-| Run | projectId, status, verdict, configSnapshot, idempotencyKey, timestamps |
-| PageResult | runId, pageKey, viewport, attempt, status, baselineArtifactId, captureProfileHash |
-| Finding | pageResultId, kind, severity, fingerprint, детали, источник |
-| Artifact | projectId, pageResultId, kind, storageKey, checksum, bytes |
-| Baseline | projectId, pageKey, viewport, captureProfileHash, artifactId, version, approvedBy |
+| Сущность       | Основные данные и инварианты                                                      |
+| -------------- | --------------------------------------------------------------------------------- |
+| User / Session | Владелец и серверная сессия; cookie HttpOnly, Secure в production                 |
+| Project        | ownerId, name, разрешённый origin; доступ всегда проверяется по ownerId           |
+| Page           | projectId, path, порядок; максимум 5 активных страниц                             |
+| Run            | projectId, status, verdict, configSnapshot, idempotencyKey, timestamps            |
+| PageResult     | runId, pageKey, viewport, attempt, status, baselineArtifactId, captureProfileHash |
+| Finding        | pageResultId, kind, severity, fingerprint, детали, источник                       |
+| Artifact       | projectId, pageResultId, kind, storageKey, checksum, bytes                        |
+| Baseline       | projectId, pageKey, viewport, captureProfileHash, artifactId, version, approvedBy |
 
 Уникальность PageResult: `(runId, pageKey, viewport)`. Уникальность эталона:
 `(projectId, pageKey, viewport, captureProfileHash)`. Профиль включает версию
@@ -150,18 +152,18 @@ Chromium, ОС runner, размеры, scale factor, locale, timezone, маск�
 
 ## HTTP API первой версии
 
-| Метод и путь | Назначение |
-| --- | --- |
-| GET /api/health | Проверка процесса; readiness БД будет отдельной |
-| POST /api/projects | Создать проект с origin и страницами |
-| GET /api/projects | Проекты текущего пользователя |
-| GET /api/projects/:id | Конфигурация проекта |
-| PATCH /api/projects/:id | Изменить будущую конфигурацию |
-| POST /api/projects/:id/runs | Поставить запуск в очередь, 202 + runId; Idempotency-Key |
-| GET /api/projects/:id/runs | История с cursor pagination |
-| GET /api/runs/:id | Статус, прогресс и результаты |
-| POST /api/projects/:id/baselines | Подтвердить конкретные pageResultId и версии |
-| GET /api/artifacts/:id | Авторизованная выдача файла/ссылки |
+| Метод и путь                     | Назначение                                               |
+| -------------------------------- | -------------------------------------------------------- |
+| GET /api/health                  | Проверка процесса; readiness БД будет отдельной          |
+| POST /api/projects               | Создать проект с origin и страницами                     |
+| GET /api/projects                | Проекты текущего пользователя                            |
+| GET /api/projects/:id            | Конфигурация проекта                                     |
+| PATCH /api/projects/:id          | Изменить будущую конфигурацию                            |
+| POST /api/projects/:id/runs      | Поставить запуск в очередь, 202 + runId; Idempotency-Key |
+| GET /api/projects/:id/runs       | История с cursor pagination                              |
+| GET /api/runs/:id                | Статус, прогресс и результаты                            |
+| POST /api/projects/:id/baselines | Подтвердить конкретные pageResultId и версии             |
+| GET /api/artifacts/:id           | Авторизованная выдача файла/ссылки                       |
 
 Все ID непрозрачные. Несуществующие и чужие ресурсы возвращают 404. Ошибки имеют
 единый формат `{ code, message, requestId, details? }`, без внутренних stack trace.

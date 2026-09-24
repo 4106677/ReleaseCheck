@@ -1,0 +1,19 @@
+name: releasecheck
+services:
+  postgres:
+    image: postgres:17.9-alpine
+    environment:
+      POSTGRES_USER: releasecheck
+      POSTGRES_PASSWORD: releasecheck
+      POSTGRES_DB: releasecheck
+    ports:
+      - '127.0.0.1:55432:5432'
+    volumes:
+      - releasecheck-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U releasecheck -d releasecheck']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+volumes:
+  releasecheck-db:
