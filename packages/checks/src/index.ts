@@ -1,6 +1,13 @@
 import { chromium } from 'playwright';
 import { z } from 'zod';
 import { findingSchema, type Finding } from '@releasecheck/contracts';
+export {
+  captureProfileHash,
+  compareCaptures,
+  type CaptureProfile,
+  type ComparableCapture,
+  type Comparison,
+} from './compare.js';
 
 export function localFixtureOrigin(value: string) {
   const url = new URL(value);

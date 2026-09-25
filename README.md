@@ -31,6 +31,7 @@
 - [Текущее состояние и следующий шаг](docs/progress.md)
 - [Совместная работа и ежедневные запуски](docs/workflow.md)
 - [Локальный запуск, проверки и ограничения текущего этапа](docs/local-development.md)
+- [Два варианта дизайна отчёта](docs/design-review.md)
 
 ## Выбранное направление
 
@@ -56,6 +57,8 @@ npm run dev
 
 Открыть [локальный интерфейс](http://127.0.0.1:5173), выбрать версию демо и нажать
 **Run check**. Не заменяйте существующий `.env`, если уже настроили окружение.
+Для выбора дизайна открыть [Review Studio](http://127.0.0.1:5173/design?direction=studio)
+или [Release Console](http://127.0.0.1:5173/design?direction=console).
 На Linux для Chromium могут потребоваться системные библиотеки — используйте
 `npx playwright install --with-deps chromium` с тем же `PLAYWRIGHT_BROWSERS_PATH`.
 
@@ -75,7 +78,7 @@ npm run test:smoke
 
 ## Пока не реализовано
 
-Подтверждение baseline и visual diff, несколько страниц/viewport, проверка ссылок,
+Подтверждение baseline и включение visual diff в рабочие запуски, несколько страниц/viewport, проверка ссылок,
 авторизация, изоляция для внешних сайтов и production-деплой. API и worker
 запускаются только с `NODE_ENV=development` или `test`, API слушает loopback.
 Не публикуйте этот прототип через туннель или внешний reverse proxy.

@@ -1,0 +1,22 @@
+{
+  "changedPixels": 14323,
+  "totalPixels": 1296000,
+  "diffRatio": 0.011051697530864197,
+  "maxDiffRatio": 0.001,
+  "findings": [
+    {
+      "kind": "javascript",
+      "message": "Demo regression: cart is unavailable"
+    },
+    {
+      "kind": "http",
+      "message": "HTTP 404",
+      "url": "http://127.0.0.1:4174/missing-resource"
+    },
+    {
+      "kind": "console",
+      "message": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    }
+  ],
+  "profileHash": "add03af8be5f280a7d14c8f194fd2ca5241e3eeaad1273f4d2c2ac59f7b0efd2"
+}
