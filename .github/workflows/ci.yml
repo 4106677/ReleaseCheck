@@ -36,17 +36,25 @@ jobs:
         run: bash scripts/ci-browser-sandbox.sh
       - run: npm run check
       - run: npm run test:integration
-      - name: Check both design previews in Chromium
+      - name: Check the full baseline workflow and design previews in Chromium
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgres://releasecheck:releasecheck@127.0.0.1:5432/releasecheck_test
+          FIXTURE_ORIGIN: http://127.0.0.1:4174
         run: |
-          npm run dev:web > "$RUNNER_TEMP/releasecheck-web.log" 2>&1 &
-          preview_pid=$!
-          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
-          for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:5173/design > /dev/null; then
+          export ARTIFACT_DIR="$RUNNER_TEMP/releasecheck-artifacts"
+          npm run db:migrate
+          npm run dev > "$RUNNER_TEMP/releasecheck-stack.log" 2>&1 &
+          stack_pid=$!
+          trap 'kill "$stack_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:5173/api/health > /dev/null &&
+               curl --fail --silent http://127.0.0.1:4174/ > /dev/null; then
+              npm run test:smoke
               npm run test:design
               exit 0
             fi
             sleep 1
           done
-          cat "$RUNNER_TEMP/releasecheck-web.log"
+          cat "$RUNNER_TEMP/releasecheck-stack.log"
           exit 1

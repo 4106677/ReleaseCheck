@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import {
+  approveBaselineSchema,
   createRunSchema,
   DEMO_PROJECT_ID,
   idempotencyKeySchema,
@@ -35,10 +36,14 @@ export function buildApp(
     if (error instanceof Conflict)
       return reply.code(409).send({
         code: error.code,
-        message:
-          error.code === 'RUN_ACTIVE'
-            ? 'A demo check is already queued or running.'
-            : 'This request key was already used with different settings.',
+        message: {
+          RUN_ACTIVE: 'A demo check is already queued or running.',
+          IDEMPOTENCY_CONFLICT: 'This request key was already used with different settings.',
+          BASELINE_VERSION_CONFLICT:
+            'The baseline changed. Review the latest version before approving again.',
+          CAPTURE_NOT_ELIGIBLE:
+            'Only a completed capture with a recorded profile can become a baseline.',
+        }[error.code],
         requestId: request.id,
       });
     request.log.error(error);
@@ -95,6 +100,31 @@ export function buildApp(
         .code(404)
         .send({ code: 'NOT_FOUND', message: 'Run not found.', requestId: request.id });
     return result;
+  });
+  app.get('/api/runs/:id/baseline', async (request, reply) => {
+    const id = runIdSchema.safeParse((request.params as { id: string }).id);
+    const result = id.success ? await repository.baselineForRun(id.data) : null;
+    if (!result)
+      return reply
+        .code(404)
+        .send({ code: 'NOT_FOUND', message: 'Run not found.', requestId: request.id });
+    return result;
+  });
+  app.post('/api/projects/:id/baselines', async (request, reply) => {
+    if ((request.params as { id: string }).id !== DEMO_PROJECT_ID)
+      return reply
+        .code(404)
+        .send({ code: 'NOT_FOUND', message: 'Project not found.', requestId: request.id });
+    const input = approveBaselineSchema.safeParse(request.body);
+    if (!input.success)
+      return reply
+        .code(400)
+        .send({
+          code: 'INVALID_REQUEST',
+          message: 'Provide a run ID and expected baseline version.',
+          requestId: request.id,
+        });
+    return repository.approveBaseline(input.data);
   });
   app.get('/api/artifacts/:id', async (request, reply) => {
     const id = runIdSchema.safeParse((request.params as { id: string }).id);

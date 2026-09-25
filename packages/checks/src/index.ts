@@ -1,3 +1,5 @@
+import { release } from 'node:os';
+import { captureProfileHash } from './compare.js';
 import { chromium } from 'playwright';
 import { z } from 'zod';
 import { findingSchema, type Finding } from '@releasecheck/contracts';
@@ -42,6 +44,7 @@ export const captureOutputSchema = z.discriminatedUnion('ok', [
     width: z.literal(1440),
     height: z.literal(900),
     browserVersion: z.string(),
+    profileHash: z.string().regex(/^[a-f0-9]{64}$/),
     findings: z.array(findingSchema).max(101),
   }),
   z.object({ ok: z.literal(false), error: z.enum(['NAVIGATION_FAILED', 'CAPTURE_FAILED']) }),
@@ -136,6 +139,14 @@ export async function captureFixture(input: CaptureInput): Promise<CaptureOutput
         width: input.width,
         height: input.height,
         browserVersion: browser.version(),
+        profileHash: captureProfileHash({
+          browserVersion: browser.version(),
+          platform: process.platform,
+          architecture: process.arch,
+          osRelease: release(),
+          width: input.width,
+          height: input.height,
+        }),
         findings,
       };
     } catch {

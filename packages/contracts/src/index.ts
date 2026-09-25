@@ -16,21 +16,56 @@ export const findingSchema = z.object({
   message: z.string().max(2000),
   url: z.string().max(2048).optional(),
 });
+export const baselineSchema = z.object({
+  id: z.uuid(),
+  profileHash: z.string().regex(/^[a-f0-9]{64}$/),
+  version: z.number().int().positive(),
+  sourceRunId: z.uuid(),
+  artifactId: z.uuid(),
+  approvedAt: z.iso.datetime(),
+});
+export const baselineStateSchema = z.object({ baseline: baselineSchema.nullable() });
+export const approveBaselineSchema = z.strictObject({
+  runId: z.uuid(),
+  expectedVersion: z.number().int().min(0).max(2147483646),
+});
+export const comparisonSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('no_baseline') }),
+  z.object({
+    status: z.literal('incompatible'),
+    reason: z.enum(['profile', 'dimensions']),
+  }),
+  z.object({
+    status: z.enum(['matched', 'changed']),
+    baseline: baselineSchema,
+    diffArtifactId: z.uuid(),
+    changedPixels: z.number().int().nonnegative(),
+    totalPixels: z.number().int().positive(),
+    diffRatio: z.number().min(0).max(1),
+    maxDiffRatio: z.number().min(0).max(1),
+    pixelThreshold: z.number().min(0).max(1),
+  }),
+]);
+export type Baseline = z.infer<typeof baselineSchema>;
+export type ComparisonResult = z.infer<typeof comparisonSchema>;
+export type ApproveBaseline = z.infer<typeof approveBaselineSchema>;
 export const runSchema = z.object({
   id: runIdSchema,
   status: runStatusSchema,
-  verdict: z.enum(['attention', 'inconclusive']),
+  verdict: z.enum(['pass', 'attention', 'inconclusive']),
   variant: z.enum(['baseline', 'regression']),
   attempt: z.number().int().nonnegative(),
   createdAt: z.iso.datetime(),
   finishedAt: z.iso.datetime().nullable(),
   error: z.string().nullable(),
+  comparison: comparisonSchema.nullable(),
   capture: z
     .object({
       artifactId: z.uuid(),
       width: z.number().int().positive(),
       height: z.number().int().positive(),
       browserVersion: z.string(),
+      profileHash: z.string().nullable(),
       findings: z.array(findingSchema),
     })
     .nullable(),

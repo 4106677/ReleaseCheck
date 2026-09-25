@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  createRunSchema,
-  idempotencyKeySchema,
-  isTerminal,
-  runSchema,
-} from '@releasecheck/contracts';
+import { createRunSchema, idempotencyKeySchema, isTerminal } from '@releasecheck/contracts';
 import { localFixtureOrigin } from '@releasecheck/checks';
 
 describe('local capture boundary', () => {
@@ -32,8 +27,7 @@ describe('local capture boundary', () => {
     expect(idempotencyKeySchema.safeParse('a'.repeat(129)).success).toBe(false);
     expect(idempotencyKeySchema.safeParse('request-1234').success).toBe(true);
   });
-  it('does not expose a pass verdict before baseline comparisons exist', () => {
-    expect(runSchema.shape.verdict.safeParse('pass').success).toBe(false);
+  it('keeps polling until a terminal state', () => {
     expect(isTerminal('running')).toBe(false);
     expect(isTerminal('failed')).toBe(true);
   });
