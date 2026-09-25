@@ -1,4 +1,4 @@
-import { StrictMode, useState } from 'react';
+import { lazy, StrictMode, Suspense, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   QueryClient,
@@ -242,10 +242,17 @@ function App() {
 }
 
 const client = new QueryClient({ defaultOptions: { queries: { retry: 1 } } });
+const DesignPreview = lazy(() => import('./design/DesignPreview.js'));
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={client}>
-      <App />
+      {location.pathname === '/design' ? (
+        <Suspense fallback={<p role="status">Loading design preview…</p>}>
+          <DesignPreview />
+        </Suspense>
+      ) : (
+        <App />
+      )}
     </QueryClientProvider>
   </StrictMode>,
 );

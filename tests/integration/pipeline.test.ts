@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { release, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { createPool, Repository, migrate } from '@releasecheck/db';
 import { LocalStorage } from '@releasecheck/storage';
 import { DEMO_PROJECT_ID, isTerminal, type Run } from '@releasecheck/contracts';
+import { captureProfileHash, compareCaptures } from '@releasecheck/checks';
 import { buildApp } from '../../apps/api/dist/app.js';
 import { startWorker } from '../../apps/worker/dist/worker.js';
 import { createFixtureServer } from '../../fixtures/demo-site/dist/server.js';
@@ -78,6 +79,36 @@ afterAll(async () => {
 });
 
 describe('API → PostgreSQL queue → browser → artifact', () => {
+  it('compares independent browser captures without flagging the unchanged fixture', async () => {
+    worker = await startWorker(pool, storage, origin);
+    async function capture(variant: 'baseline' | 'regression') {
+      const response = await post({ variant });
+      expect(response.statusCode).toBe(202);
+      const run = await waitForRun(response.json().id);
+      expect(run.status).toBe('completed');
+      const result = run.capture!;
+      const artifact = await app.inject(`/api/artifacts/${result.artifactId}`);
+      return {
+        png: artifact.rawPayload,
+        profileHash: captureProfileHash({
+          browserVersion: result.browserVersion,
+          width: result.width,
+          height: result.height,
+          platform: process.platform,
+          architecture: process.arch,
+          osRelease: release(),
+        }),
+      };
+    }
+    const original = await capture('baseline');
+    const unchanged = compareCaptures(original, await capture('baseline'));
+    expect(unchanged).toMatchObject({ status: 'matched', changedPixels: 0 });
+    const regression = compareCaptures(original, await capture('regression'));
+    expect(regression.status).toBe('changed');
+    if (regression.status === 'incompatible') throw new Error('Fixture profiles should match');
+    expect(regression.diffRatio).toBeGreaterThan(regression.maxDiffRatio);
+  });
+
   it('rolls back the Run if the queue is unavailable, allowing a safe retry', async () => {
     const key = randomUUID();
     await pool.query('ALTER SCHEMA graphile_worker RENAME TO graphile_worker_unavailable');

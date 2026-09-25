@@ -34,6 +34,8 @@ Watch-сборка общих пакетов пока не добавлена.
 - `npm run check` — сборка, типы, lint и unit-тесты.
 - `npm run test:integration` — реальная БД и браузер; нужны сборка и `TEST_DATABASE_URL`.
 - `npm run test:smoke` — обе версии demo через UI; нужен работающий локальный стек.
+- `npm run test:design` — оба дизайн-прототипа, ползунок, diff, выбор issue, modal и mobile.
+- `npm run design:assets` — реальные before/after/diff для прототипов; нужны fixture и сборка packages.
 - `npm run format` / `npm run format:check` — форматирование.
 - `npm run db:migrate` — миграции Graphile и приложения, с checksum уже применённых SQL.
 
@@ -83,7 +85,8 @@ AppArmor, разрешающий user namespaces только двум browser e
 
 - Один demo-проект, одна страница, один desktop viewport; нет пользователя и OAuth.
 - История ограничена последними 20 запусками, без cursor pagination.
-- Нет baseline, visual diff, link checker, mobile capture и удаления истории.
+- Нет сохранения baseline, visual diff в живых запусках, link checker, mobile capture и удаления истории.
+  Чистый модуль PNG comparison уже работает и используется в дизайн-прототипах.
 - Infrastructure-сбои допускают три попытки через Graphile; ошибка самого сайта
   завершает запуск. Нет отдельного heartbeat/reconciler для run после жёсткого
   падения worker на последней попытке. Такой случай может оставить `running`;
@@ -93,8 +96,8 @@ AppArmor, разрешающий user namespaces только двум browser e
   не публикуются до завершения записи файла.
 - Нет контейнерной изоляции и egress-политики runner, поэтому внешние URL
   недоступны через API и production-запуск явно запрещён.
-- Фиксированный профиль захвата пока не имеет version hash; сравнение скриншотов
-  между разными окружениями сейчас не выполняется.
+- Модуль comparison использует version hash профиля; текущий worker пока не
+  сохраняет этот профиль в БД, поэтому автоматическое сравнение запусков ещё не включено.
 
 Эти ограничения относятся к текущему шагу, а не отменяют утверждённую
 [целевую архитектуру](architecture.md).

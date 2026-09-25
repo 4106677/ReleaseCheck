@@ -36,3 +36,17 @@ jobs:
         run: bash scripts/ci-browser-sandbox.sh
       - run: npm run check
       - run: npm run test:integration
+      - name: Check both design previews in Chromium
+        run: |
+          npm run dev:web > "$RUNNER_TEMP/releasecheck-web.log" 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:5173/design > /dev/null; then
+              npm run test:design
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/releasecheck-web.log"
+          exit 1
