@@ -149,7 +149,7 @@ function StorefrontViewer({
 
 export default function DesignPreview() {
   const initial =
-    new URLSearchParams(location.search).get('direction') === 'console' ? 'console' : 'studio';
+    new URLSearchParams(location.search).get('direction') === 'studio' ? 'studio' : 'console';
   const [direction, setDirection] = useState<Direction>(initial);
   const [view, setView] = useState<View>('split');
   const [position, setPosition] = useState(58);
