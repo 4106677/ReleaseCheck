@@ -1,0 +1,16 @@
+{
+  "name": "@releasecheck/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@releasecheck/contracts": "0.1.0",
+    "@releasecheck/db": "0.1.0",
+    "@releasecheck/storage": "0.1.0",
+    "fastify": "5.12.5"
+  }
+}

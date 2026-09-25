@@ -1,0 +1,113 @@
+import Fastify from 'fastify';
+import {
+  createRunSchema,
+  DEMO_PROJECT_ID,
+  idempotencyKeySchema,
+  runIdSchema,
+} from '@releasecheck/contracts';
+import { Conflict, type Repository } from '@releasecheck/db';
+import type { LocalStorage } from '@releasecheck/storage';
+
+export function buildApp(
+  repository: Repository,
+  storage: LocalStorage,
+  fixtureOrigin: string,
+  logger = false,
+) {
+  const app = Fastify({ logger, bodyLimit: 8192 });
+  app.addHook('onRequest', async (request, reply) => {
+    const host = request.headers.host?.split(':')[0];
+    if (!host || !['127.0.0.1', 'localhost'].includes(host)) {
+      return reply
+        .code(403)
+        .send({ code: 'LOCAL_ONLY', message: 'Local requests only.', requestId: request.id });
+    }
+    const origin = request.headers.origin;
+    if (origin && !['http://127.0.0.1:5173', 'http://localhost:5173'].includes(origin)) {
+      return reply.code(403).send({
+        code: 'ORIGIN_REJECTED',
+        message: 'Origin is not allowed.',
+        requestId: request.id,
+      });
+    }
+  });
+  app.setErrorHandler((error, request, reply) => {
+    if (error instanceof Conflict)
+      return reply.code(409).send({
+        code: error.code,
+        message:
+          error.code === 'RUN_ACTIVE'
+            ? 'A demo check is already queued or running.'
+            : 'This request key was already used with different settings.',
+        requestId: request.id,
+      });
+    request.log.error(error);
+    const status =
+      typeof error === 'object' &&
+      error !== null &&
+      'statusCode' in error &&
+      typeof error.statusCode === 'number' &&
+      error.statusCode >= 400 &&
+      error.statusCode < 500
+        ? error.statusCode
+        : 500;
+    return reply.code(status).send({
+      code: status === 500 ? 'INTERNAL_ERROR' : 'INVALID_REQUEST',
+      message: status === 500 ? 'The request could not be completed.' : 'Invalid request.',
+      requestId: request.id,
+    });
+  });
+  app.get('/api/health', async () => ({ status: 'ok', mode: 'local-demo' }));
+  app.get('/api/projects', async () => [{ id: DEMO_PROJECT_ID, name: 'ReleaseCheck demo' }]);
+  app.post('/api/projects/:id/runs', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (id !== DEMO_PROJECT_ID)
+      return reply
+        .code(404)
+        .send({ code: 'NOT_FOUND', message: 'Project not found.', requestId: request.id });
+    const input = createRunSchema.safeParse(request.body);
+    const key = idempotencyKeySchema.safeParse(request.headers['idempotency-key']);
+    if (!input.success || !key.success)
+      return reply.code(400).send({
+        code: 'INVALID_REQUEST',
+        message:
+          'Choose a demo variant and provide an Idempotency-Key (8–128 letters, digits, underscores or hyphens).',
+        requestId: request.id,
+      });
+    const result = await repository.createRun(input.data, key.data, fixtureOrigin);
+    return reply
+      .code(result.reused ? 200 : 202)
+      .header('Location', `/api/runs/${result.id}`)
+      .send(result);
+  });
+  app.get('/api/projects/:id/runs', async (request, reply) => {
+    if ((request.params as { id: string }).id !== DEMO_PROJECT_ID)
+      return reply
+        .code(404)
+        .send({ code: 'NOT_FOUND', message: 'Project not found.', requestId: request.id });
+    return repository.listRuns();
+  });
+  app.get('/api/runs/:id', async (request, reply) => {
+    const id = runIdSchema.safeParse((request.params as { id: string }).id);
+    const result = id.success ? await repository.getRun(id.data) : null;
+    if (!result)
+      return reply
+        .code(404)
+        .send({ code: 'NOT_FOUND', message: 'Run not found.', requestId: request.id });
+    return result;
+  });
+  app.get('/api/artifacts/:id', async (request, reply) => {
+    const id = runIdSchema.safeParse((request.params as { id: string }).id);
+    const artifact = id.success ? await repository.artifact(id.data) : null;
+    if (!artifact)
+      return reply
+        .code(404)
+        .send({ code: 'NOT_FOUND', message: 'Artifact not found.', requestId: request.id });
+    return reply
+      .type('image/png')
+      .header('Cache-Control', 'private, no-store')
+      .header('X-Content-Type-Options', 'nosniff')
+      .send(await storage.read(artifact.key));
+  });
+  return app;
+}
