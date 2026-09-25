@@ -74,6 +74,11 @@ Browser smoke: запуск обеих версий через UI, загруз�
 findings, отсутствие ошибок самого React-приложения и горизонтального переполнения
 на ширине 390 px. Скриншоты — `.local/smoke/`.
 
+CI использует Ubuntu 24.04. Для загруженного Chromium устанавливается профиль
+AppArmor, разрешающий user namespaces только двум browser executable в cache
+текущего job. Chromium sandbox и общая политика AppArmor остаются включены.
+Скрипт `scripts/ci-browser-sandbox.sh` отказывается работать вне GitHub-hosted Linux.
+
 ## Ограничения текущей реализации
 
 - Один demo-проект, одна страница, один desktop viewport; нет пользователя и OAuth.
