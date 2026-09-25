@@ -2,8 +2,16 @@ import { randomUUID } from 'node:crypto';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import { DEMO_PROJECT_ID, runSchema, type CreateRun, type Finding } from '@releasecheck/contracts';
-import { artifacts, captures, runs, type Snapshot } from './schema.js';
+import {
+  DEMO_PROJECT_ID,
+  runSchema,
+  baselineSchema,
+  type ApproveBaseline,
+  type ComparisonResult,
+  type CreateRun,
+  type Finding,
+} from '@releasecheck/contracts';
+import { artifacts, baselines, captures, runs, type Snapshot } from './schema.js';
 export { migrate } from './migrate.js';
 export { Pool } from 'pg';
 
@@ -18,7 +26,10 @@ export function createPool(connectionString: string) {
 }
 
 export class Conflict extends Error {
-  constructor(readonly code: 'IDEMPOTENCY_CONFLICT' | 'RUN_ACTIVE') {
+  constructor(
+    readonly code:
+      'IDEMPOTENCY_CONFLICT' | 'RUN_ACTIVE' | 'BASELINE_VERSION_CONFLICT' | 'CAPTURE_NOT_ELIGIBLE',
+  ) {
     super(code);
   }
 }
@@ -50,11 +61,23 @@ export class Repository {
       const id = randomUUID();
       const url = new URL(input.variant === 'regression' ? '/?regression=1' : '/', fixtureOrigin)
         .href;
+      const candidates = await tx
+        .selectDistinctOn([baselines.profileHash])
+        .from(baselines)
+        .where(eq(baselines.projectId, DEMO_PROJECT_ID))
+        .orderBy(baselines.profileHash, desc(baselines.version));
       await tx.insert(runs).values({
         id,
         projectId: DEMO_PROJECT_ID,
         idempotencyKey: key,
-        snapshot: { url, variant: input.variant, width: 1440, height: 900 },
+        snapshot: {
+          url,
+          variant: input.variant,
+          width: 1440,
+          height: 900,
+          comparisonOptions: { pixelThreshold: 0.1, maxDiffRatio: 0.001 },
+          baselines: candidates.map(toBaseline),
+        },
         status: 'queued',
         verdict: 'inconclusive',
         attempt: 0,
@@ -85,12 +108,14 @@ export class Repository {
       createdAt: run.createdAt.toISOString(),
       finishedAt: run.finishedAt?.toISOString() ?? null,
       error: run.error,
+      comparison: run.comparison,
       capture: capture
         ? {
             artifactId: capture.artifactId,
             width: capture.width,
             height: capture.height,
             browserVersion: capture.browserVersion,
+            profileHash: capture.profileHash,
             findings: capture.findings,
           }
         : null,
@@ -117,21 +142,41 @@ export class Repository {
   async complete(
     id: string,
     attempt: number,
-    capture: { width: number; height: number; browserVersion: string; findings: Finding[] },
+    capture: {
+      width: number;
+      height: number;
+      browserVersion: string;
+      profileHash: string | null;
+      findings: Finding[];
+    },
     artifact: { id: string; key: string; checksum: string; bytes: number },
+    comparison: ComparisonResult = { status: 'no_baseline' },
+    diffArtifact?: { id: string; key: string; checksum: string; bytes: number },
   ) {
     return this.db.transaction(async (tx) => {
       const updated = await tx
         .update(runs)
         .set({
           status: 'completed',
-          verdict: capture.findings.length ? 'attention' : 'inconclusive',
+          verdict:
+            capture.findings.length || comparison.status === 'changed'
+              ? 'attention'
+              : comparison.status === 'matched'
+                ? 'pass'
+                : 'inconclusive',
+          comparison,
           finishedAt: new Date(),
         })
         .where(and(eq(runs.id, id), eq(runs.attempt, attempt), eq(runs.status, 'running')))
         .returning({ id: runs.id });
       if (!updated.length) return false;
+      if (
+        (comparison.status === 'matched' || comparison.status === 'changed') &&
+        (!diffArtifact || comparison.diffArtifactId !== diffArtifact.id)
+      )
+        throw new Error('Comparison must reference its persisted diff artifact');
       await tx.insert(artifacts).values({ ...artifact, runId: id });
+      if (diffArtifact) await tx.insert(artifacts).values({ ...diffArtifact, runId: id });
       await tx.insert(captures).values({ ...capture, runId: id, artifactId: artifact.id });
       return true;
     });
@@ -144,9 +189,78 @@ export class Repository {
       .where(and(eq(runs.id, id), eq(runs.attempt, attempt), eq(runs.status, 'running')));
   }
 
+  async baselineForRun(id: string) {
+    const run = await this.getRun(id);
+    if (!run) return null;
+    if (!run.capture?.profileHash) return { baseline: null };
+    const [row] = await this.db
+      .select()
+      .from(baselines)
+      .where(
+        and(
+          eq(baselines.projectId, DEMO_PROJECT_ID),
+          eq(baselines.profileHash, run.capture.profileHash),
+        ),
+      )
+      .orderBy(desc(baselines.version))
+      .limit(1);
+    return { baseline: row ? toBaseline(row) : null };
+  }
+
+  async approveBaseline(input: ApproveBaseline) {
+    return this.db.transaction(async (tx) => {
+      // Shared with createRun: either the approval or the queued snapshot wins,
+      // never a mixture. Versions are append-only and never change old reports.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${DEMO_PROJECT_ID}))`);
+      const [source] = await tx
+        .select()
+        .from(runs)
+        .innerJoin(captures, eq(captures.runId, runs.id))
+        .where(and(eq(runs.id, input.runId), eq(runs.projectId, DEMO_PROJECT_ID)));
+      if (!source || source.rc_runs.status !== 'completed' || !source.rc_captures.profileHash)
+        throw new Conflict('CAPTURE_NOT_ELIGIBLE');
+      const capture = source.rc_captures;
+      const profileHash = capture.profileHash!;
+      const [current] = await tx
+        .select()
+        .from(baselines)
+        .where(
+          and(eq(baselines.projectId, DEMO_PROJECT_ID), eq(baselines.profileHash, profileHash)),
+        )
+        .orderBy(desc(baselines.version))
+        .limit(1);
+      // An exact retry is safe even when the client lost the first response.
+      if (
+        current?.sourceRunId === input.runId &&
+        (input.expectedVersion === current.version - 1 || input.expectedVersion === current.version)
+      )
+        return { baseline: toBaseline(current) };
+      if ((current?.version ?? 0) !== input.expectedVersion)
+        throw new Conflict('BASELINE_VERSION_CONFLICT');
+      const [approved] = await tx
+        .insert(baselines)
+        .values({
+          id: randomUUID(),
+          projectId: DEMO_PROJECT_ID,
+          profileHash,
+          version: input.expectedVersion + 1,
+          sourceRunId: input.runId,
+          artifactId: capture.artifactId,
+          approvedAt: new Date(),
+          approvedBy: 'local-dev-user',
+        })
+        .returning();
+      return { baseline: toBaseline(approved!) };
+    });
+  }
+
   async artifact(id: string) {
     const [row] = await this.db.select().from(artifacts).where(eq(artifacts.id, id));
     return row ?? null;
   }
 }
 export type { Snapshot };
+
+function toBaseline(row: typeof baselines.$inferSelect) {
+  return baselineSchema.parse({ ...row, approvedAt: row.approvedAt.toISOString() });
+}

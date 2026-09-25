@@ -1060,7 +1060,7 @@
     grid-template-columns: 1fr;
   }
   .dp-rail {
-    display: none !important;
+    display: none;
   }
   .dp-workspace-main {
     padding: 0 24px 24px;

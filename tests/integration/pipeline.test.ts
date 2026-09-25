@@ -59,7 +59,7 @@ beforeEach(async () => {
   await pool.query(
     'SELECT graphile_worker.remove_job(key) FROM graphile_worker.jobs WHERE key IS NOT NULL',
   );
-  await pool.query('TRUNCATE rc_captures, rc_artifacts, rc_runs');
+  await pool.query('TRUNCATE rc_baselines, rc_captures, rc_artifacts, rc_runs');
   app = buildApp(repository, storage, origin);
 });
 afterEach(async () => {
@@ -107,6 +107,104 @@ describe('API → PostgreSQL queue → browser → artifact', () => {
     expect(regression.status).toBe('changed');
     if (regression.status === 'incompatible') throw new Error('Fixture profiles should match');
     expect(regression.diffRatio).toBeGreaterThan(regression.maxDiffRatio);
+  });
+
+  it('approves a baseline, persists matched/changed results and preserves historical evidence', async () => {
+    worker = await startWorker(pool, storage, origin);
+    const capture = async (variant: 'baseline' | 'regression') =>
+      waitForRun((await post({ variant })).json().id);
+    const approve = (runId: string, expectedVersion: number) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/projects/${DEMO_PROJECT_ID}/baselines`,
+        payload: { runId, expectedVersion },
+      });
+    const original = await capture('baseline');
+    expect(original.comparison).toEqual({ status: 'no_baseline' });
+    expect(original.verdict).toBe('inconclusive');
+    const approval = await approve(original.id, 0);
+    expect(approval.statusCode).toBe(200);
+    expect(approval.json().baseline.version).toBe(1);
+    expect((await approve(original.id, 0)).json()).toEqual(approval.json());
+    const same = await capture('baseline');
+    expect(same.verdict).toBe('pass');
+    expect(same.comparison).toMatchObject({
+      status: 'matched',
+      changedPixels: 0,
+      baseline: { version: 1, sourceRunId: original.id },
+    });
+    const changed = await capture('regression');
+    expect(changed.verdict).toBe('attention');
+    expect(changed.comparison?.status).toBe('changed');
+    if (changed.comparison?.status !== 'changed') throw new Error('Expected comparison');
+    expect(changed.comparison.diffRatio).toBeGreaterThan(changed.comparison.maxDiffRatio);
+    const diff = await app.inject(`/api/artifacts/${changed.comparison.diffArtifactId}`);
+    expect(diff.statusCode).toBe(200);
+    expect(diff.rawPayload.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    expect((await approve(changed.id, 0)).json().code).toBe('BASELINE_VERSION_CONFLICT');
+
+    // Freeze a queued Run at v1, then approve v2 before its worker starts.
+    await worker.stop();
+    worker = undefined;
+    const key = randomUUID();
+    const queued = (await post({ variant: 'regression' }, key)).json().id;
+    expect((await approve(changed.id, 1)).json().baseline.version).toBe(2);
+    expect((await post({ variant: 'regression' }, key)).json().id).toBe(queued);
+    worker = await startWorker(pool, storage, origin);
+    const frozen = await waitForRun(queued);
+    expect(frozen.comparison).toMatchObject({ status: 'changed', baseline: { version: 1 } });
+    expect((await repository.getRun(changed.id))?.comparison).toEqual(changed.comparison);
+    const acceptedVisual = await capture('regression');
+    expect(acceptedVisual.comparison).toMatchObject({
+      status: 'matched',
+      changedPixels: 0,
+      baseline: { version: 2 },
+    });
+    expect(acceptedVisual.verdict).toBe('attention'); // Accepting pixels never clears JS/HTTP errors.
+    expect((await approve(original.id, 0)).json().code).toBe('BASELINE_VERSION_CONFLICT');
+  });
+
+  it('serializes concurrent baseline decisions and rejects unfinished or legacy captures', async () => {
+    const approve = (runId: string, expectedVersion: number) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/projects/${DEMO_PROJECT_ID}/baselines`,
+        payload: { runId, expectedVersion },
+      });
+    const queued = (await post()).json().id;
+    expect((await approve(queued, 0)).json().code).toBe('CAPTURE_NOT_ELIGIBLE');
+    worker = await startWorker(pool, storage, origin);
+    const first = await waitForRun(queued);
+    const second = await waitForRun((await post()).json().id);
+    const decisions = await Promise.all([approve(first.id, 0), approve(second.id, 0)]);
+    expect(decisions.map((response) => response.statusCode).sort()).toEqual([200, 409]);
+    expect((await pool.query('SELECT count(*)::int AS n FROM rc_baselines')).rows[0].n).toBe(1);
+    const legacy = await waitForRun((await post()).json().id);
+    await pool.query('UPDATE rc_captures SET profile_hash = NULL WHERE run_id = $1', [legacy.id]);
+    expect((await approve(legacy.id, 1)).json().code).toBe('CAPTURE_NOT_ELIGIBLE');
+    expect((await approve(randomUUID(), 0)).statusCode).toBe(409);
+    expect((await approve(first.id, -1)).statusCode).toBe(400);
+  });
+
+  it('does not compare a baseline from a different capture environment', async () => {
+    worker = await startWorker(pool, storage, origin);
+    const original = await waitForRun((await post()).json().id);
+    // Simulate a capture produced before a browser/OS upgrade.
+    await pool.query('UPDATE rc_captures SET profile_hash = $1 WHERE run_id = $2', [
+      'a'.repeat(64),
+      original.id,
+    ]);
+    await repository.approveBaseline({ runId: original.id, expectedVersion: 0 });
+    const fresh = await waitForRun((await post()).json().id);
+    expect(fresh.comparison).toEqual({ status: 'incompatible', reason: 'profile' });
+    expect(fresh.verdict).toBe('inconclusive');
+    expect(
+      (
+        await pool.query('SELECT count(*)::int AS n FROM rc_artifacts WHERE run_id = $1', [
+          fresh.id,
+        ])
+      ).rows[0].n,
+    ).toBe(1);
   });
 
   it('rolls back the Run if the queue is unavailable, allowing a safe retry', async () => {
@@ -194,7 +292,13 @@ describe('API → PostgreSQL queue → browser → artifact', () => {
     const first = await repository.claim(id);
     const second = await repository.claim(id);
     const artifact = { id: randomUUID(), key: `${randomUUID()}.png`, checksum: 'test', bytes: 100 };
-    const capture = { width: 1440, height: 900, browserVersion: 'test', findings: [] };
+    const capture = {
+      width: 1440,
+      height: 900,
+      browserVersion: 'test',
+      profileHash: null,
+      findings: [],
+    };
     expect(await repository.complete(id, first!.attempt, capture, artifact)).toBe(false);
     expect((await pool.query('SELECT count(*)::int AS n FROM rc_artifacts')).rows[0].n).toBe(0);
     expect(await repository.complete(id, second!.attempt, capture, artifact)).toBe(true);

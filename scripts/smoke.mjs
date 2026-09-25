@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
-// Exercise an already running local stack. The API accepts only fixture variants.
+// Exercise an already running local stack. This explicitly approves demo baselines.
 const browser = await chromium.launch({ headless: true, chromiumSandbox: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1050 } });
@@ -10,7 +10,7 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('http://127.0.0.1:5173');
   await page.getByRole('heading', { name: 'Run a demo check' }).waitFor();
-  for (const variant of ['baseline', 'regression']) {
+  async function check(variant) {
     await page.getByLabel('Demo version').selectOption(variant);
     const [response] = await Promise.all([
       page.waitForResponse(
@@ -21,26 +21,67 @@ try {
     assert.ok([200, 202].includes(response.status()));
     const { id } = await response.json();
     const report = page.locator(`section[data-run-id="${id}"]`);
-    await report.locator('.status.completed').waitFor({ timeout: 60_000 });
-    const screenshot = report.getByRole('img');
-    await screenshot.waitFor();
-    await screenshot.evaluate((image) => image.decode());
-    assert.equal(await screenshot.evaluate((image) => image.naturalWidth), 1440);
-    if (variant === 'baseline') {
-      assert.match(await report.innerText(), /No JavaScript or network errors/);
-    } else {
-      assert.match(await report.innerText(), /Demo regression: cart is unavailable/);
-      assert.match(await report.innerText(), /HTTP 404/);
-    }
-    await mkdir('.local/smoke', { recursive: true });
-    await page.screenshot({ path: `.local/smoke/${variant}-desktop.png`, fullPage: true });
+    await report.locator('.rc-status.completed').waitFor({ timeout: 60_000 });
+    await report
+      .locator('.dp-capture img')
+      .evaluateAll((images) => Promise.all(images.map((image) => image.decode())));
+    assert.equal(
+      await report
+        .locator('.dp-capture img')
+        .first()
+        .evaluate((image) => image.naturalWidth),
+      1440,
+    );
+    return report;
   }
+  async function approve(report) {
+    await report.getByRole('button', { name: 'Use as baseline', exact: true }).click();
+    await page.getByRole('dialog').waitFor();
+    await page.keyboard.press('Escape');
+    await page.getByRole('dialog').waitFor({ state: 'hidden' });
+    await report.getByRole('button', { name: 'Use as baseline', exact: true }).click();
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' && response.url().endsWith('/baselines'),
+      ),
+      page.getByRole('button', { name: 'Confirm baseline', exact: true }).click(),
+    ]);
+    assert.equal(response.status(), 200);
+    await report.getByRole('button', { name: 'Current baseline', exact: true }).waitFor();
+  }
+  const original = await check('baseline');
+  await approve(original);
+  const matched = await check('baseline');
+  assert.match(await matched.innerText(), /Checks passed/);
+  assert.match(await matched.innerText(), /0 changed pixels/);
+  const regression = await check('regression');
+  assert.match(await regression.innerText(), /Needs attention/);
+  assert.match(await regression.innerText(), /Demo regression: cart is unavailable/);
+  assert.match(await regression.innerText(), /HTTP 404/);
+  const slider = regression.getByRole('slider', { name: 'Comparison position' });
+  await slider.fill('58');
+  await regression.getByRole('button', { name: 'Difference', exact: true }).click();
+  const imageUrl = await regression.locator('.dp-capture img').getAttribute('src');
+  assert.match(imageUrl, /^\/api\/artifacts\//);
+  const response = await page.request.get(new URL(imageUrl, page.url()).href);
+  assert.equal(response.status(), 200);
+  assert.equal(response.headers()['content-type'], 'image/png');
+  await page.getByRole('button', { name: 'Compare', exact: true }).click();
+  await mkdir('.local/smoke', { recursive: true });
+  await page.screenshot({ path: '.local/smoke/regression-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  assert.ok(await page.getByRole('button', { name: 'Run check', exact: true }).isVisible());
   await page.screenshot({ path: '.local/smoke/regression-mobile.png', fullPage: true });
+  await approve(regression);
+  const accepted = await check('regression');
+  assert.match(await accepted.innerText(), /0 changed pixels/);
+  assert.match(await accepted.innerText(), /Needs attention/);
+  assert.match(await accepted.innerText(), /Demo regression: cart is unavailable/);
   assert.deepEqual(errors, []);
   console.log(
-    'Browser smoke passed: original + regression captures, findings, mobile width, no application JS errors.',
+    'Browser smoke passed: approve baseline, unchanged pass, real diff, mobile layout, Escape, approved visual change retains browser errors.',
   );
 } finally {
   await browser.close();

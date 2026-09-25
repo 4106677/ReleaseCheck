@@ -1,8 +1,14 @@
+import type { ComparisonResult } from '@releasecheck/contracts';
 import { run, type Task } from 'graphile-worker';
 import { z } from 'zod';
 import { Repository, type Pool } from '@releasecheck/db';
 import { LocalStorage } from '@releasecheck/storage';
-import { localFixtureOrigin, type CaptureInput, type CaptureOutput } from '@releasecheck/checks';
+import {
+  compareCaptures,
+  localFixtureOrigin,
+  type CaptureInput,
+  type CaptureOutput,
+} from '@releasecheck/checks';
 import { executeCapture } from './runner.js';
 
 export function captureTask(
@@ -28,8 +34,38 @@ export function captureTask(
         await repository.fail(runId, claim.attempt, output.error);
         return;
       }
-      const artifact = await storage.putPng(Buffer.from(output.screenshot, 'base64'));
+      const png = Buffer.from(output.screenshot, 'base64');
+      const artifact = await storage.putPng(png);
       uploadedKey = artifact.key;
+      const candidates = claim.snapshot.baselines ?? [];
+      const baseline = candidates.find((candidate) => candidate.profileHash === output.profileHash);
+      let comparison: ComparisonResult = candidates.length
+        ? { status: 'incompatible', reason: 'profile' }
+        : { status: 'no_baseline' };
+      let diffArtifact: Awaited<ReturnType<LocalStorage['putPng']>> | undefined;
+      if (baseline) {
+        const before = await repository.artifact(baseline.artifactId);
+        if (!before) throw new Error('Baseline artifact is missing');
+        const result = compareCaptures(
+          { png: await storage.read(before.key), profileHash: baseline.profileHash },
+          { png, profileHash: output.profileHash },
+          claim.snapshot.comparisonOptions,
+        );
+        if (result.status === 'incompatible') comparison = result;
+        else {
+          diffArtifact = await storage.putPng(result.diffPng);
+          comparison = {
+            status: result.status,
+            baseline,
+            diffArtifactId: diffArtifact.id,
+            changedPixels: result.changedPixels,
+            totalPixels: result.totalPixels,
+            diffRatio: result.diffRatio,
+            maxDiffRatio: result.maxDiffRatio,
+            pixelThreshold: result.pixelThreshold,
+          };
+        }
+      }
       const accepted = await repository.complete(
         runId,
         claim.attempt,
@@ -37,12 +73,18 @@ export function captureTask(
           width: output.width,
           height: output.height,
           browserVersion: output.browserVersion,
+          profileHash: output.profileHash,
           findings: output.findings,
         },
         artifact,
+        comparison,
+        diffArtifact,
       );
       // A stale attempt must not leave a second published artifact.
-      if (!accepted) await storage.remove(artifact.key);
+      if (!accepted) {
+        await storage.remove(artifact.key);
+        if (diffArtifact) await storage.remove(diffArtifact.key);
+      }
     } catch (error) {
       // Do not remove a possibly committed file after an ambiguous database failure;
       // orphan collection will be implemented with retention, once references are checked.
