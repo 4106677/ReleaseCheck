@@ -10,6 +10,37 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('http://127.0.0.1:5173');
   await page.getByRole('heading', { name: 'Run a demo check' }).waitFor();
+  await page.getByRole('link', { name: 'Project settings', exact: true }).click();
+  const tolerance = page.getByLabel('Allowed visual difference (%)');
+  await tolerance.fill('0.2');
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+  await page.getByText('Settings saved for future checks.').waitFor();
+  await page.reload();
+  await tolerance.waitFor();
+  assert.equal(await tolerance.inputValue(), '0.2');
+  // A second tab wins a settings change; this draft must survive the conflict.
+  const endpoint = 'http://127.0.0.1:5173/api/projects/00000000-0000-4000-8000-000000000001';
+  const project = await (await page.request.get(endpoint)).json();
+  const concurrent = await page.request.patch(endpoint, {
+    data: { expectedVersion: project.settingsVersion, maxDiffBasisPoints: 30 },
+  });
+  assert.equal(concurrent.status(), 200);
+  await tolerance.fill('0.4');
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: 'Project settings changed' }).waitFor();
+  assert.equal(await tolerance.inputValue(), '0.4');
+  await page.getByRole('button', { name: 'Reload settings', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#tolerance')?.value === '0.3');
+  await tolerance.fill('0.1');
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+  await page.getByText('Settings saved for future checks.').waitFor();
+  await mkdir('.local/smoke', { recursive: true });
+  await page.screenshot({ path: '.local/smoke/settings-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({ path: '.local/smoke/settings-mobile.png', fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1050 });
+  await page.getByRole('link', { name: 'Checks', exact: true }).click();
   async function check(variant) {
     await page.getByLabel('Demo version').selectOption(variant);
     const [response] = await Promise.all([

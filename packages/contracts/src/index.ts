@@ -1,6 +1,18 @@
 import { z } from 'zod';
 
 export const DEMO_PROJECT_ID = '00000000-0000-4000-8000-000000000001';
+export const projectSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  settingsVersion: z.number().int().positive(),
+  maxDiffBasisPoints: z.number().int().min(0).max(500),
+});
+export const updateProjectSchema = z.strictObject({
+  expectedVersion: z.number().int().min(1).max(2147483646),
+  maxDiffBasisPoints: z.number().int().min(0).max(500),
+});
+export type Project = z.infer<typeof projectSchema>;
+export type UpdateProject = z.infer<typeof updateProjectSchema>;
 export const createRunSchema = z.strictObject({
   variant: z.enum(['baseline', 'regression']).default('baseline'),
 });

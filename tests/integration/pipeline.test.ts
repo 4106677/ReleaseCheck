@@ -60,6 +60,7 @@ beforeEach(async () => {
     'SELECT graphile_worker.remove_job(key) FROM graphile_worker.jobs WHERE key IS NOT NULL',
   );
   await pool.query('TRUNCATE rc_baselines, rc_captures, rc_artifacts, rc_runs');
+  await pool.query('UPDATE rc_projects SET max_diff_basis_points = 10, settings_version = 1');
   app = buildApp(repository, storage, origin);
 });
 afterEach(async () => {
@@ -333,5 +334,62 @@ describe('API → PostgreSQL queue → browser → artifact', () => {
     expect((await app.inject('/api/runs/not-an-id')).statusCode).toBe(404);
     expect((await app.inject('/api/artifacts/not-an-id')).statusCode).toBe(404);
     expect((await pool.query('SELECT count(*)::int AS n FROM rc_runs')).rows[0].n).toBe(0);
+  });
+});
+
+describe('project settings', () => {
+  const url = `/api/projects/${DEMO_PROJECT_ID}`;
+  const patch = (payload: object) => app.inject({ method: 'PATCH', url, payload });
+  it('validates settings and rejects stale conflicting saves while accepting an exact retry', async () => {
+    expect((await app.inject(url)).json()).toMatchObject({
+      settingsVersion: 1,
+      maxDiffBasisPoints: 10,
+    });
+    for (const value of [-1, 501, 0.5, '10']) {
+      expect((await patch({ expectedVersion: 1, maxDiffBasisPoints: value })).statusCode).toBe(400);
+    }
+    expect(
+      (await patch({ expectedVersion: 1, maxDiffBasisPoints: 20, url: 'https://example.com' }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'PATCH',
+          url,
+          headers: { origin: 'https://example.com' },
+          payload: { expectedVersion: 1, maxDiffBasisPoints: 20 },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect((await app.inject(`/api/projects/${randomUUID()}`)).statusCode).toBe(404);
+    const results = await Promise.all(
+      [20, 30].map((maxDiffBasisPoints) => patch({ expectedVersion: 1, maxDiffBasisPoints })),
+    );
+    expect(results.map((result) => result.statusCode).sort()).toEqual([200, 409]);
+    const saved = results.find((result) => result.statusCode === 200)!.json();
+    expect(saved.settingsVersion).toBe(2);
+    const retry = await patch({ expectedVersion: 1, maxDiffBasisPoints: saved.maxDiffBasisPoints });
+    expect(retry.statusCode).toBe(200);
+    expect(retry.json()).toEqual(saved);
+  });
+
+  it('freezes tolerance when queued and uses updated settings only for subsequent runs', async () => {
+    worker = await startWorker(pool, storage, origin);
+    const original = await waitForRun((await post()).json().id);
+    await repository.approveBaseline({ runId: original.id, expectedVersion: 0 });
+    await worker.stop();
+    worker = undefined;
+    const key = randomUUID();
+    const queued = (await post({ variant: 'regression' }, key)).json();
+    expect((await patch({ expectedVersion: 1, maxDiffBasisPoints: 200 })).statusCode).toBe(200);
+    expect((await post({ variant: 'regression' }, key)).json().id).toBe(queued.id);
+    worker = await startWorker(pool, storage, origin);
+    const frozen = await waitForRun(queued.id);
+    expect(frozen.comparison).toMatchObject({ status: 'changed', maxDiffRatio: 0.001 });
+    const next = await waitForRun((await post({ variant: 'regression' })).json().id);
+    expect(next.comparison).toMatchObject({ status: 'matched', maxDiffRatio: 0.02 });
+    expect(next.verdict).toBe('attention'); // Browser errors cannot be hidden by visual tolerance.
+    expect((await repository.getRun(queued.id))?.comparison).toEqual(frozen.comparison);
   });
 });

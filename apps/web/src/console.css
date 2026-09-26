@@ -252,3 +252,41 @@
   color: inherit;
   text-decoration: none;
 }
+
+.rc-project-link {
+  display: block;
+  margin: 20px 0;
+  color: #b8baff;
+}
+.rc-project-link[aria-current='page'] {
+  color: #fff;
+  font-weight: 700;
+}
+.rc-settings {
+  max-width: 720px;
+  padding: 28px;
+  background: #181920;
+  border: 1px solid #30313c;
+  border-radius: 12px;
+}
+.rc-settings label {
+  display: block;
+  font-weight: 600;
+  margin-top: 24px;
+}
+.rc-settings p {
+  color: #b4b5c5;
+  line-height: 1.6;
+}
+.rc-settings input {
+  width: 140px;
+  padding: 12px;
+  border: 1px solid #65667b;
+  border-radius: 6px;
+  background: #111218;
+  color: #fff;
+  font: inherit;
+}
+.rc-settings .rc-dialog-actions {
+  flex-wrap: wrap;
+}

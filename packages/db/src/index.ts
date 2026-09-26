@@ -6,12 +6,14 @@ import {
   DEMO_PROJECT_ID,
   runSchema,
   baselineSchema,
+  projectSchema,
+  type UpdateProject,
   type ApproveBaseline,
   type ComparisonResult,
   type CreateRun,
   type Finding,
 } from '@releasecheck/contracts';
-import { artifacts, baselines, captures, runs, type Snapshot } from './schema.js';
+import { artifacts, baselines, captures, projects, runs, type Snapshot } from './schema.js';
 export { migrate } from './migrate.js';
 export { Pool } from 'pg';
 
@@ -28,7 +30,11 @@ export function createPool(connectionString: string) {
 export class Conflict extends Error {
   constructor(
     readonly code:
-      'IDEMPOTENCY_CONFLICT' | 'RUN_ACTIVE' | 'BASELINE_VERSION_CONFLICT' | 'CAPTURE_NOT_ELIGIBLE',
+      | 'IDEMPOTENCY_CONFLICT'
+      | 'RUN_ACTIVE'
+      | 'BASELINE_VERSION_CONFLICT'
+      | 'CAPTURE_NOT_ELIGIBLE'
+      | 'PROJECT_VERSION_CONFLICT',
   ) {
     super(code);
   }
@@ -38,6 +44,36 @@ export class Repository {
   readonly db;
   constructor(readonly pool: Pool) {
     this.db = drizzle(pool);
+  }
+
+  async getProject() {
+    const [project] = await this.db.select().from(projects).where(eq(projects.id, DEMO_PROJECT_ID));
+    return projectSchema.parse(project);
+  }
+
+  async updateProject(input: UpdateProject) {
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${DEMO_PROJECT_ID}))`);
+      const [current] = await tx.select().from(projects).where(eq(projects.id, DEMO_PROJECT_ID));
+      if (!current) throw new Error('Demo project is missing');
+      if (
+        current.maxDiffBasisPoints === input.maxDiffBasisPoints &&
+        (input.expectedVersion === current.settingsVersion ||
+          input.expectedVersion === current.settingsVersion - 1)
+      )
+        return projectSchema.parse(current);
+      if (current.settingsVersion !== input.expectedVersion)
+        throw new Conflict('PROJECT_VERSION_CONFLICT');
+      const [updated] = await tx
+        .update(projects)
+        .set({
+          maxDiffBasisPoints: input.maxDiffBasisPoints,
+          settingsVersion: current.settingsVersion + 1,
+        })
+        .where(eq(projects.id, DEMO_PROJECT_ID))
+        .returning();
+      return projectSchema.parse(updated);
+    });
   }
 
   async createRun(input: CreateRun, key: string, fixtureOrigin: string) {
@@ -58,6 +94,8 @@ export class Repository {
           and(eq(runs.projectId, DEMO_PROJECT_ID), inArray(runs.status, ['queued', 'running'])),
         );
       if (active) throw new Conflict('RUN_ACTIVE');
+      const [project] = await tx.select().from(projects).where(eq(projects.id, DEMO_PROJECT_ID));
+      if (!project) throw new Error('Demo project is missing');
       const id = randomUUID();
       const url = new URL(input.variant === 'regression' ? '/?regression=1' : '/', fixtureOrigin)
         .href;
@@ -75,7 +113,11 @@ export class Repository {
           variant: input.variant,
           width: 1440,
           height: 900,
-          comparisonOptions: { pixelThreshold: 0.1, maxDiffRatio: 0.001 },
+          settingsVersion: project.settingsVersion,
+          comparisonOptions: {
+            pixelThreshold: 0.1,
+            maxDiffRatio: project.maxDiffBasisPoints / 10000,
+          },
           baselines: candidates.map(toBaseline),
         },
         status: 'queued',

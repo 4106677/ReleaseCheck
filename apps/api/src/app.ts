@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import { startRecovery } from './recovery.js';
 import {
+  updateProjectSchema,
   approveBaselineSchema,
   createRunSchema,
   DEMO_PROJECT_ID,
@@ -45,6 +46,8 @@ export function buildApp(
       return reply.code(409).send({
         code: error.code,
         message: {
+          PROJECT_VERSION_CONFLICT:
+            'Project settings changed. Reload the settings before saving again.',
           RUN_ACTIVE: 'A demo check is already queued or running.',
           IDEMPOTENCY_CONFLICT: 'This request key was already used with different settings.',
           BASELINE_VERSION_CONFLICT:
@@ -71,7 +74,29 @@ export function buildApp(
     });
   });
   app.get('/api/health', async () => ({ status: 'ok', mode: 'local-demo' }));
-  app.get('/api/projects', async () => [{ id: DEMO_PROJECT_ID, name: 'ReleaseCheck demo' }]);
+  app.get('/api/projects', async () => [await repository.getProject()]);
+  app.get('/api/projects/:id', async (request, reply) => {
+    if ((request.params as { id: string }).id !== DEMO_PROJECT_ID)
+      return reply
+        .code(404)
+        .send({ code: 'NOT_FOUND', message: 'Project not found.', requestId: request.id });
+    return repository.getProject();
+  });
+  app.patch('/api/projects/:id', async (request, reply) => {
+    if ((request.params as { id: string }).id !== DEMO_PROJECT_ID)
+      return reply
+        .code(404)
+        .send({ code: 'NOT_FOUND', message: 'Project not found.', requestId: request.id });
+    const input = updateProjectSchema.safeParse(request.body);
+    if (!input.success)
+      return reply.code(400).send({
+        code: 'INVALID_REQUEST',
+        message:
+          'Provide an expected settings version and tolerance between 0 and 500 basis points.',
+        requestId: request.id,
+      });
+    return repository.updateProject(input.data);
+  });
   app.post('/api/projects/:id/runs', async (request, reply) => {
     const { id } = request.params as { id: string };
     if (id !== DEMO_PROJECT_ID)

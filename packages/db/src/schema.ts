@@ -6,10 +6,16 @@ export type Snapshot = {
   variant: Run['variant'];
   width: number;
   height: number;
+  settingsVersion?: number;
   comparisonOptions?: { pixelThreshold: number; maxDiffRatio: number };
   baselines?: Baseline[];
 };
-export const projects = pgTable('rc_projects', { id: uuid().primaryKey(), name: text().notNull() });
+export const projects = pgTable('rc_projects', {
+  id: uuid().primaryKey(),
+  name: text().notNull(),
+  settingsVersion: integer('settings_version').notNull(),
+  maxDiffBasisPoints: integer('max_diff_basis_points').notNull(),
+});
 export const runs = pgTable('rc_runs', {
   id: uuid().primaryKey(),
   projectId: uuid('project_id')
