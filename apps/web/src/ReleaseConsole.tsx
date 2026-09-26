@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  groupFindings,
+  type FindingGroup,
   baselineStateSchema,
   createdRunSchema,
   DEMO_PROJECT_ID,
@@ -17,6 +19,7 @@ import './console.css';
 
 const artifactUrl = (id: string) => `/api/artifacts/${id}`;
 const percent = (ratio: number) => (ratio * 100).toFixed(2);
+const observationLabel = (count: number) => `${count} observation${count === 1 ? '' : 's'}`;
 const verdictLabel = {
   pass: 'Checks passed',
   attention: 'Needs attention',
@@ -219,19 +222,30 @@ function Report({
   const compared =
     comparison?.status === 'matched' || comparison?.status === 'changed' ? comparison : null;
   const findings = run.capture?.findings ?? [];
+  const groups = groupFindings(findings);
   const issues = [
     ...(compared?.status === 'changed'
       ? [
           {
+            id: 'visual',
+            group: null as FindingGroup | null,
             kind: 'visual',
             message: `${percent(compared.diffRatio)}% of pixels changed`,
             detail: `${compared.changedPixels.toLocaleString()} changed pixels exceed the allowed ${percent(compared.maxDiffRatio)}%. Review the difference image before accepting this appearance.`,
           },
         ]
       : []),
-    ...findings.map((finding) => ({
-      ...finding,
-      detail: finding.url ?? 'Observed while capturing the page.',
+    ...groups.map((group) => ({
+      id: group.id,
+      group,
+      kind: group.kind,
+      message: group.message,
+      detail:
+        group.relation === 'resource'
+          ? 'Related HTTP and console observations have the same resource URL and status. Review the original evidence below.'
+          : group.observations.length > 1
+            ? 'Identical observations are grouped. Every occurrence is preserved below.'
+            : 'Observed while capturing the page.',
     })),
   ];
   const issue = issues[issueIndex] ?? issues[0];
@@ -275,8 +289,11 @@ function Report({
           </strong>
         </div>
         <div className="dp-stat">
-          <small>BROWSER OBSERVATIONS</small>
-          <strong>{run.capture ? findings.length : '—'}</strong>
+          <small>BROWSER ISSUES</small>
+          <strong>
+            {run.capture ? groups.length : '—'}
+            <span>{run.capture ? observationLabel(findings.length) : ''}</span>
+          </strong>
         </div>
         <div className="dp-stat dp-profile">
           <small>CAPTURE PROFILE</small>
@@ -373,7 +390,7 @@ function Report({
                 {issues.map((item, index) => (
                   <button
                     className="dp-issue"
-                    key={index}
+                    key={item.id}
                     aria-pressed={issue === item}
                     onClick={() => {
                       setIssueIndex(index);
@@ -384,6 +401,11 @@ function Report({
                     <div>
                       <small>{item.kind}</small>
                       <strong>{item.message}</strong>
+                      {item.group && (
+                        <span className="rc-observation-count">
+                          {observationLabel(item.group.observations.length)}
+                        </span>
+                      )}
                     </div>
                     <span className="dp-issue-arrow">↗</span>
                   </button>
@@ -393,6 +415,36 @@ function Report({
                 <div className="dp-issue-detail" aria-live="polite">
                   <h3>{issue.message}</h3>
                   <p>{issue.detail}</p>
+                  {issue.group && (
+                    <details className="rc-evidence" key={issue.id}>
+                      <summary>Original evidence ({issue.group.observations.length})</summary>
+                      <ol>
+                        {issue.group.observations.map(({ index, finding }) => (
+                          <li key={index}>
+                            <strong>
+                              Observation {index + 1} · {finding.kind}
+                            </strong>
+                            <p>{finding.message}</p>
+                            {finding.request && (
+                              <p>
+                                {finding.request.method} · {finding.request.resourceType}
+                                {finding.request.status ? ` · HTTP ${finding.request.status}` : ''}
+                              </p>
+                            )}
+                            {finding.url && <code>{finding.url}</code>}
+                            {finding.source && (
+                              <code>
+                                Source: {finding.source.url}
+                                {finding.source.line ? `:${finding.source.line}` : ''}
+                                {finding.source.column ? `:${finding.source.column}` : ''}
+                              </code>
+                            )}
+                            {finding.stack && <pre>{finding.stack}</pre>}
+                          </li>
+                        ))}
+                      </ol>
+                    </details>
+                  )}
                 </div>
               )}
               <div className="dp-review-note">

@@ -1,5 +1,32 @@
 # Состояние проекта
 
+## 26 сентября 2026 — связанные ошибки и исходные доказательства
+
+После этапа recovery реализована группировка browser observations:
+
+- Capture сохраняет request method/status/resourceType, console source и позиции,
+  стек JS-ошибки. Старые JSON findings совместимы; миграция БД не нужна.
+- `groupFindings` объединяет точные повторы и связывает HTTP/console по полному
+  URL/status только при единственном подходящем HTTP-контексте.
+- Query strings, неоднозначные методы, обрезанные URL и legacy observations
+  не объединяются по предположению. Все исходные записи сохранены, verdict не меняется.
+- Release Console показывает число проблем и число observations. Original evidence
+  раскрывает каждый источник, запрос и стек; доступно клавиатурой и на мобильной ширине.
+- На реальном regression fixture: 3 browser observations → 2 browser issues
+  (JavaScript и HTTP 404 со связанным console). С visual change очередь содержит 3 пункта.
+
+Проверки: сборка, TypeScript, lint; 28 unit + 15 integration-тестов.
+Реальный Chromium подтверждает контекст и группировку. Browser smoke проверяет
+счётчики, раскрытие evidence через Enter, два исходных сообщения, baseline-цикл
+и mobile 390 px. Recovery UI также прошёл; desktop/mobile снимки просмотрены.
+
+Ветка `codex/grouped-findings`, поверх `codex/run-recovery`; отдельный draft PR.
+Предыдущий recovery опубликован в PR #4, commit `f03f551`, CI прошёл.
+
+Следующий этап: навигация и адреса отчётов — сохранение выбранного Run при
+обновлении страницы, переходы назад/вперёд и удобное открытие истории.
+После этого — проекты и несколько viewport. Нового выбора дизайна сейчас не требуется.
+
 ## 26 сентября 2026 — восстановление прерванных проверок
 
 Завершён следующий этап:
