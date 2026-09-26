@@ -100,12 +100,14 @@ export function captureTask(
 }
 
 export async function startWorker(pool: Pool, storage: LocalStorage, fixtureOrigin: string) {
+  const repository = new Repository(pool);
+  await repository.recoverRuns();
   return run({
     pgPool: pool,
     concurrency: 1,
     pollInterval: 250,
     noHandleSignals: true,
     parsedCronItems: [],
-    taskList: { capture_run: captureTask(new Repository(pool), storage, fixtureOrigin) },
+    taskList: { capture_run: captureTask(repository, storage, fixtureOrigin) },
   });
 }

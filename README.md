@@ -10,7 +10,9 @@
 Сейчас можно проверить две версии подготовленного storefront: исходную и
 изменённую, с намеренной JS-ошибкой и HTTP 404. История и результаты сохраняются
 в PostgreSQL. Утверждённый тёмный Release Console подключён к реальным данным:
-сравнение, история и принятие эталона работают через API.
+сравнение, история и принятие эталона работают через API. Прерванные проверки
+получают понятную ошибку после истечения лимита попытки и могут быть запущены
+заново кнопкой **Retry check**.
 
 ## Целевой сценарий полной первой версии
 
@@ -74,12 +76,14 @@ docker compose exec -T postgres createdb -U releasecheck releasecheck_test
 TEST_DATABASE_URL=postgres://releasecheck:releasecheck@127.0.0.1:55432/releasecheck_test PLAYWRIGHT_BROWSERS_PATH=.local/browsers npm run test:integration
 # При работающем npm run dev, в другом терминале:
 npm run test:smoke
+npm run test:recovery-ui
 ```
 
 Тестовую БД создаём один раз. Integration suite очищает только отдельно заданную
 базу с именем, оканчивающимся на `_test`. GitHub Actions выполняет сборку,
 проверку TypeScript, ESLint, unit- и integration-тесты с реальными PostgreSQL и Chromium,
-а также полный браузерный сценарий принятия baseline и оба дизайн-прототипа.
+а также полный браузерный сценарий принятия baseline, error/retry UI и оба дизайн-прототипа.
+Recovery integration-тест использует SIGKILL отдельного тестового worker.
 
 ## Пока не реализовано
 
@@ -87,6 +91,8 @@ npm run test:smoke
 авторизация, изоляция для внешних сайтов и production-деплой. API и worker
 запускаются только с `NODE_ENV=development` или `test`, API слушает loopback.
 Не публикуйте этот прототип через туннель или внешний reverse proxy.
+После hard crash выполняется завершение по deadline и явный новый запуск;
+автоматическое продолжение прерванной попытки и retention пока не реализованы.
 
 Публичное портфолио будет включать демо с подготовленным сайтом, видео сценария
 обнаружения регрессии, тесты и объяснение технических компромиссов.

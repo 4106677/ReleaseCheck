@@ -133,8 +133,19 @@ export class Repository {
   async claim(id: string) {
     const [row] = await this.db
       .update(runs)
-      .set({ status: 'running', attempt: sql`${runs.attempt} + 1`, error: null })
-      .where(and(eq(runs.id, id), inArray(runs.status, ['queued', 'running'])))
+      .set({
+        status: 'running',
+        attempt: sql`${runs.attempt} + 1`,
+        error: null,
+        attemptDeadline: sql`clock_timestamp() + interval '2 minutes'`,
+      })
+      .where(
+        and(
+          eq(runs.id, id),
+          inArray(runs.status, ['queued', 'running']),
+          sql`(${runs.attemptDeadline} is null or ${runs.attemptDeadline} > clock_timestamp())`,
+        ),
+      )
       .returning({ attempt: runs.attempt, snapshot: runs.snapshot });
     return row ?? null;
   }
@@ -167,7 +178,14 @@ export class Repository {
           comparison,
           finishedAt: new Date(),
         })
-        .where(and(eq(runs.id, id), eq(runs.attempt, attempt), eq(runs.status, 'running')))
+        .where(
+          and(
+            eq(runs.id, id),
+            eq(runs.attempt, attempt),
+            eq(runs.status, 'running'),
+            sql`${runs.attemptDeadline} > clock_timestamp()`,
+          ),
+        )
         .returning({ id: runs.id });
       if (!updated.length) return false;
       if (
@@ -187,6 +205,42 @@ export class Repository {
       .update(runs)
       .set({ status: 'failed', verdict: 'inconclusive', error, finishedAt: new Date() })
       .where(and(eq(runs.id, id), eq(runs.attempt, attempt), eq(runs.status, 'running')));
+  }
+
+  async recoverRuns() {
+    // Read only the supported queue view. Never rewrite Graphile's private tables
+    // or unlock a possibly live process. Terminal runs fence late task delivery.
+    // Lock Run rows first: completing/claiming concurrently either wins this lock
+    // or observes the new terminal state. Concurrent reconcilers skip one another.
+    const result = await this.pool.query<{ id: string; error: string }>(`
+      WITH active AS MATERIALIZED (
+        SELECT r.id, r.attempt_deadline
+        FROM rc_runs r
+        WHERE r.status IN ('queued', 'running')
+        ORDER BY r.created_at
+        FOR UPDATE OF r SKIP LOCKED
+        LIMIT 100
+      ), decisions AS (
+        SELECT r.id, CASE
+          WHEN r.attempt_deadline <= clock_timestamp() THEN 'RUN_DEADLINE_EXCEEDED'
+          WHEN j.id IS NULL THEN 'QUEUE_JOB_MISSING'
+          WHEN j.locked_at IS NOT NULL AND j.locked_at <= clock_timestamp() - interval '2 minutes'
+            THEN 'RUN_DEADLINE_EXCEEDED'
+          WHEN j.locked_at IS NULL AND j.attempts >= j.max_attempts
+            THEN 'CAPTURE_INFRASTRUCTURE_FAILED'
+          ELSE NULL
+        END AS error
+        FROM active r LEFT JOIN graphile_worker.jobs j
+          ON j.key = r.id::text AND j.task_identifier = 'capture_run'
+      )
+      UPDATE rc_runs r SET status = 'failed', verdict = 'inconclusive',
+        error = d.error, finished_at = clock_timestamp()
+      FROM decisions d
+      WHERE r.id = d.id AND d.error IS NOT NULL
+        AND r.status IN ('queued', 'running')
+      RETURNING r.id, r.error
+    `);
+    return result.rows;
   }
 
   async baselineForRun(id: string) {
