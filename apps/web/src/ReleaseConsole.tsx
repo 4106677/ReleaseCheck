@@ -12,6 +12,7 @@ import {
   type CreateRun,
   type Run,
 } from '@releasecheck/contracts';
+import { ProjectSettings } from './ProjectSettings.js';
 import { request } from './api.js';
 import { followLink, navigate, useReportRoute } from './navigation.js';
 import { ScreenshotViewer, type View } from './design/ScreenshotViewer.js';
@@ -509,6 +510,14 @@ export default function ReleaseConsole() {
               <small>Demo workspace</small>
             </div>
           </div>
+          <a
+            className="rc-project-link"
+            href={`/projects/${DEMO_PROJECT_ID}`}
+            onClick={followLink}
+            aria-current={route.kind === 'project' ? 'page' : undefined}
+          >
+            Project settings
+          </a>
           <section className="rc-run-controls">
             <h2>Run a demo check</h2>
             <label htmlFor="variant">Demo version</label>
@@ -580,7 +589,9 @@ export default function ReleaseConsole() {
             </span>
             <span className="dp-environment">Local demo · Desktop</span>
           </div>
-          {route.kind === 'not-found' ? (
+          {route.kind === 'project' ? (
+            <ProjectSettings />
+          ) : route.kind === 'not-found' ? (
             <div className="rc-empty">
               <h1>Page not found</h1>
               <p>This address does not point to a report.</p>

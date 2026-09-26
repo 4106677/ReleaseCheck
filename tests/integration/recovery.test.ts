@@ -72,6 +72,7 @@ beforeEach(async () => {
     'SELECT graphile_worker.remove_job(key) FROM graphile_worker.jobs WHERE key IS NOT NULL',
   );
   await pool.query('TRUNCATE rc_baselines, rc_captures, rc_artifacts, rc_runs');
+  await pool.query('UPDATE rc_projects SET max_diff_basis_points = 10, settings_version = 1');
   app = buildApp(repository, storage, origin);
 });
 afterEach(async () => {

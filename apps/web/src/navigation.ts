@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore, type MouseEvent } from 'react';
-import { runIdSchema } from '@releasecheck/contracts';
+import { runIdSchema, DEMO_PROJECT_ID } from '@releasecheck/contracts';
 
 function subscribe(callback: () => void) {
   window.addEventListener('popstate', callback);
@@ -20,8 +20,10 @@ export function useReportRoute() {
   const path = useSyncExternalStore(subscribe, () => location.pathname);
   const match = /^\/runs\/([^/]+)\/?$/.exec(path);
   const id = runIdSchema.safeParse(match?.[1]);
-  const title =
-    path === '/'
+  const project = path === `/projects/${DEMO_PROJECT_ID}`;
+  const title = project
+    ? 'Project settings · ReleaseCheck'
+    : path === '/'
       ? 'Checks · ReleaseCheck'
       : id.success
         ? `Check ${id.data.slice(0, 8)} · ReleaseCheck`
@@ -29,6 +31,7 @@ export function useReportRoute() {
   useEffect(() => {
     document.title = title;
   }, [title]);
+  if (project) return { kind: 'project' as const };
   if (path === '/') return { kind: 'home' as const };
   return id.success ? { kind: 'run' as const, id: id.data } : { kind: 'not-found' as const };
 }
