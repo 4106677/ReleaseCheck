@@ -94,9 +94,46 @@ try {
   assert.match(await accepted.innerText(), /0 changed pixels/);
   assert.match(await accepted.innerText(), /Needs attention/);
   assert.match(await accepted.innerText(), /Demo regression: cart is unavailable/);
+  const latestUrl = page.url();
+  assert.match(new URL(latestUrl).pathname, /^\/runs\/[a-f0-9-]+$/);
+  await page.reload();
+  await page
+    .locator(
+      `section[data-run-id="${new URL(latestUrl).pathname.split('/').pop()}"] .rc-status.completed`,
+    )
+    .waitFor();
+  await page.getByRole('link', { name: 'Checks', exact: true }).click();
+  await page.getByRole('heading', { name: 'Know what changed.' }).waitFor();
+  await page.goBack();
+  await page.getByRole('region', { name: 'Check result' }).waitFor();
+  assert.equal(page.url(), latestUrl);
+  await page.goForward();
+  assert.equal(new URL(page.url()).pathname, '/');
+  const reportLink = page.locator('.rc-history a').first();
+  assert.equal(await reportLink.getAttribute('href'), new URL(latestUrl).pathname);
+  const [separateTab] = await Promise.all([
+    page.context().waitForEvent('page'),
+    reportLink.click({ button: 'middle' }),
+  ]);
+  await separateTab.getByRole('region', { name: 'Check result' }).waitFor();
+  assert.equal(separateTab.url(), latestUrl);
+  await separateTab.close();
+  await reportLink.click();
+  await page.getByRole('region', { name: 'Check result' }).waitFor();
+  await page.goto('http://127.0.0.1:5173/runs/not-a-uuid');
+  await page.getByRole('heading', { name: 'Page not found' }).waitFor();
+  await page.getByRole('link', { name: 'Back to checks', exact: true }).click();
+  await page.goto('http://127.0.0.1:5173/runs/00000000-0000-4000-8000-000000000099');
+  await page.getByRole('alert').filter({ hasText: 'Run not found.' }).waitFor();
+  // A permalink must not depend on inclusion in the latest-20 history page.
+  await page.route('**/api/projects/*/runs', (route) => route.fulfill({ json: [] }));
+  await page.goto(latestUrl);
+  await page.getByRole('region', { name: 'Check result' }).waitFor();
+  assert.match(await page.title(), /Check .* · ReleaseCheck/);
+  assert.equal(await page.locator('.rc-history a').count(), 0);
   assert.deepEqual(errors, []);
   console.log(
-    'Browser smoke passed: approve baseline, unchanged pass, real diff, mobile layout, Escape, approved visual change retains browser errors.',
+    'Browser smoke passed: approve baseline, unchanged pass, real diff, mobile layout, Escape, approved visual change retains browser errors, report URLs/reload/back/forward/new tab.',
   );
 } finally {
   await browser.close();

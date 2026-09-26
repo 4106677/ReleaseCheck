@@ -45,7 +45,7 @@
 .rc-history h2 {
   margin-bottom: 16px;
 }
-.rc-history > button {
+.rc-history > a {
   display: flex;
   width: 100%;
   justify-content: space-between;
@@ -58,7 +58,7 @@
   border-radius: 5px;
   margin-bottom: 6px;
 }
-.rc-history > button[aria-pressed='true'] {
+.rc-history > a[aria-current='page'] {
   background: var(--dp-accent-soft);
   border-color: var(--dp-accent);
 }
@@ -246,4 +246,9 @@
   overflow-wrap: anywhere;
   font-size: 10px;
   color: var(--dp-muted);
+}
+
+.rc-history > a {
+  color: inherit;
+  text-decoration: none;
 }
