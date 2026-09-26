@@ -13,6 +13,7 @@ import {
   type Run,
 } from '@releasecheck/contracts';
 import { request } from './api.js';
+import { followLink, navigate, useReportRoute } from './navigation.js';
 import { ScreenshotViewer, type View } from './design/ScreenshotViewer.js';
 import './design/design.css';
 import './console.css';
@@ -468,7 +469,9 @@ export default function ReleaseConsole() {
   const client = useQueryClient();
   const [variant, setVariant] = useState<CreateRun['variant']>('baseline');
   const [key, setKey] = useState(() => crypto.randomUUID());
-  const [selected, setSelected] = useState<string | null>(null);
+  const route = useReportRoute();
+  const selected = route.kind === 'run' ? route.id : null;
+  const selectRun = (id: string) => navigate(`/runs/${id}`);
   const history = useQuery({
     queryKey: ['history'],
     queryFn: async () => runHistorySchema.parse(await request(`/projects/${DEMO_PROJECT_ID}/runs`)),
@@ -486,7 +489,7 @@ export default function ReleaseConsole() {
         }),
       ).id,
     onSuccess: (id) => {
-      setSelected(id);
+      selectRun(id);
       setKey(crypto.randomUUID());
       void client.invalidateQueries({ queryKey: ['history'] });
     },
@@ -546,33 +549,51 @@ export default function ReleaseConsole() {
             )}
             {history.data?.length === 0 && <p>Your first check will appear here.</p>}
             {history.data?.map((run) => (
-              <button
+              <a
                 key={run.id}
-                aria-pressed={selected === run.id}
-                onClick={() => setSelected(run.id)}
+                href={`/runs/${run.id}`}
+                aria-current={selected === run.id ? 'page' : undefined}
+                onClick={followLink}
               >
                 <span>
                   {run.id.slice(0, 8)}
                   <small>{new Date(run.createdAt).toLocaleString()}</small>
                 </span>
                 <span className={`rc-status ${run.status}`}>{run.status}</span>
-              </button>
+              </a>
             ))}
           </section>
         </aside>
         <div className="dp-workspace-main">
           <div className="dp-topline">
             <span>
-              Northstar <i>/</i> Checks
+              Northstar <i>/</i>{' '}
+              <a href="/" onClick={followLink}>
+                Checks
+              </a>
+              {selected && (
+                <>
+                  {' '}
+                  <i>/</i> {selected.slice(0, 8)}
+                </>
+              )}
             </span>
             <span className="dp-environment">Local demo · Desktop</span>
           </div>
-          {selected ? (
+          {route.kind === 'not-found' ? (
+            <div className="rc-empty">
+              <h1>Page not found</h1>
+              <p>This address does not point to a report.</p>
+              <a href="/" onClick={followLink}>
+                Back to checks
+              </a>
+            </div>
+          ) : selected ? (
             <Report
               key={selected}
               id={selected}
               retryDisabled={active || mutation.isPending}
-              onCreated={setSelected}
+              onCreated={selectRun}
             />
           ) : (
             <div className="rc-empty">

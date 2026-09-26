@@ -61,7 +61,7 @@ try {
     }
   });
   await page.goto('http://127.0.0.1:5173');
-  await page.getByRole('button', { name: /a1111111/ }).click();
+  await page.getByRole('link', { name: /a1111111/ }).click();
   const report = page.locator(`section[data-run-id="${failedId}"]`);
   await report.getByRole('button', { name: 'Retry check', exact: true }).waitFor();
   assert.match(await report.innerText(), /exceeded its time limit/);
@@ -76,6 +76,7 @@ try {
   await page.getByText('Temporarily unavailable. Try again.', { exact: true }).waitFor();
   await report.getByRole('button', { name: 'Retry check', exact: true }).click();
   await page.locator(`section[data-run-id="${retriedId}"]`).waitFor();
+  assert.equal(new URL(page.url()).pathname, `/runs/${retriedId}`);
   assert.equal(submissions.length, 2);
   assert.deepEqual(submissions[0].body, { variant: 'regression' }); // Select defaults to original.
   assert.deepEqual(submissions[1], submissions[0]); // Ambiguous retry keeps its key.
