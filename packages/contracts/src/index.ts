@@ -15,6 +15,21 @@ export const findingSchema = z.object({
   kind: z.enum(['javascript', 'console', 'http', 'transport']),
   message: z.string().max(2000),
   url: z.string().max(2048).optional(),
+  source: z
+    .object({
+      url: z.string().max(2048),
+      line: z.number().int().positive().optional(),
+      column: z.number().int().positive().optional(),
+    })
+    .optional(),
+  request: z
+    .object({
+      method: z.string().max(32),
+      resourceType: z.string().max(64),
+      status: z.number().int().min(100).max(599).optional(),
+    })
+    .optional(),
+  stack: z.string().max(4000).optional(),
 });
 export const baselineSchema = z.object({
   id: z.uuid(),
@@ -78,3 +93,5 @@ export const runHistorySchema = z.array(
 );
 export const createdRunSchema = z.object({ id: runIdSchema, reused: z.boolean() });
 export const isTerminal = (status: Run['status']) => status === 'completed' || status === 'failed';
+
+export { groupFindings, type FindingGroup } from './group-findings.js';

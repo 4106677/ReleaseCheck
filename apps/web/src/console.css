@@ -206,3 +206,44 @@
 .rc-retry p {
   margin: 12px 0;
 }
+
+.rc-observation-count {
+  display: block;
+  margin-top: 5px;
+  color: var(--dp-muted);
+  font-size: 10px;
+}
+.rc-evidence {
+  margin-top: 18px;
+  border-top: 1px solid var(--dp-line);
+  padding-top: 14px;
+}
+.rc-evidence summary {
+  cursor: pointer;
+  color: var(--dp-accent);
+}
+.rc-evidence summary:focus-visible {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: 4px;
+}
+.rc-evidence ol {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.rc-evidence li + li {
+  margin-top: 16px;
+  border-top: 1px solid var(--dp-line);
+  padding-top: 12px;
+}
+.rc-evidence code {
+  display: block;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+.rc-evidence pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+  color: var(--dp-muted);
+}

@@ -7,7 +7,7 @@ import type { Server } from 'node:http';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createPool, Repository, migrate } from '@releasecheck/db';
 import { LocalStorage } from '@releasecheck/storage';
-import { DEMO_PROJECT_ID, isTerminal, type Run } from '@releasecheck/contracts';
+import { DEMO_PROJECT_ID, groupFindings, isTerminal, type Run } from '@releasecheck/contracts';
 import { captureProfileHash, compareCaptures } from '@releasecheck/checks';
 import { buildApp } from '../../apps/api/dist/app.js';
 import { startWorker } from '../../apps/worker/dist/worker.js';
@@ -260,6 +260,20 @@ describe('API → PostgreSQL queue → browser → artifact', () => {
     const result = await waitForRun(response.json().id);
     expect(result.status).toBe('completed');
     expect(result.verdict).toBe('attention');
+    const grouped = groupFindings(result.capture!.findings);
+    expect(grouped).toHaveLength(2);
+    const network = grouped.find((group) => group.kind === 'http')!;
+    expect(network.relation).toBe('resource');
+    expect(network.observations.map(({ finding }) => finding.kind).sort()).toEqual([
+      'console',
+      'http',
+    ]);
+    expect(
+      network.observations.find(({ finding }) => finding.kind === 'http')?.finding.request,
+    ).toMatchObject({ method: 'GET', status: 404, resourceType: 'fetch' });
+    expect(
+      grouped.find((group) => group.kind === 'javascript')?.observations[0]?.finding.stack,
+    ).toContain('Demo regression: cart is unavailable');
     expect(result.capture?.findings).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

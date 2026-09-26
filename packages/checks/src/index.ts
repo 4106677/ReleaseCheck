@@ -96,11 +96,29 @@ export async function captureFixture(input: CaptureInput): Promise<CaptureOutput
         });
     };
     page.on('pageerror', (error) =>
-      add({ kind: 'javascript', message: error.message.slice(0, 2000) }),
+      add({
+        kind: 'javascript',
+        message: error.message.slice(0, 2000),
+        ...(error.stack ? { stack: error.stack.slice(0, 4000) } : {}),
+      }),
     );
     page.on('console', (message) => {
-      if (message.type() === 'error')
-        add({ kind: 'console', message: message.text().slice(0, 2000) });
+      if (message.type() === 'error') {
+        const location = message.location();
+        add({
+          kind: 'console',
+          message: message.text().slice(0, 2000),
+          ...(location.url
+            ? {
+                source: {
+                  url: location.url.slice(0, 2048),
+                  ...(location.lineNumber >= 0 ? { line: location.lineNumber + 1 } : {}),
+                  ...(location.columnNumber >= 0 ? { column: location.columnNumber + 1 } : {}),
+                },
+              }
+            : {}),
+        });
+      }
     });
     page.on('response', (response) => {
       if (response.status() >= 400)
@@ -108,6 +126,11 @@ export async function captureFixture(input: CaptureInput): Promise<CaptureOutput
           kind: 'http',
           message: `HTTP ${response.status()}`,
           url: response.url().slice(0, 2048),
+          request: {
+            method: response.request().method().slice(0, 32),
+            resourceType: response.request().resourceType().slice(0, 64),
+            status: response.status(),
+          },
         });
     });
     page.on('requestfailed', (request) =>
@@ -115,6 +138,10 @@ export async function captureFixture(input: CaptureInput): Promise<CaptureOutput
         kind: 'transport',
         message: (request.failure()?.errorText ?? 'Request failed').slice(0, 2000),
         url: request.url().slice(0, 2048),
+        request: {
+          method: request.method().slice(0, 32),
+          resourceType: request.resourceType().slice(0, 64),
+        },
       }),
     );
     try {
