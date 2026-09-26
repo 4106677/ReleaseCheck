@@ -141,7 +141,63 @@ function BaselineApproval({ run }: { run: Run }) {
   );
 }
 
-function Report({ id }: { id: string }) {
+function RetryCheck({
+  run,
+  disabled,
+  onCreated,
+}: {
+  run: Run;
+  disabled: boolean;
+  onCreated: (id: string) => void;
+}) {
+  const client = useQueryClient();
+  const [key] = useState(() => crypto.randomUUID());
+  const retry = useMutation({
+    mutationFn: async () =>
+      createdRunSchema.parse(
+        await request(`/projects/${DEMO_PROJECT_ID}/runs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
+          body: JSON.stringify({ variant: run.variant }),
+        }),
+      ).id,
+    onSuccess: (id) => {
+      void client.invalidateQueries({ queryKey: ['history'] });
+      onCreated(id);
+    },
+  });
+  return (
+    <div className="rc-retry">
+      <p>Start a new check of the same demo version using the current baseline.</p>
+      <button
+        className="dp-summary-button"
+        disabled={disabled || retry.isPending}
+        onClick={() => retry.mutate()}
+      >
+        {retry.isPending ? 'Starting…' : 'Retry check'}
+      </button>
+      {retry.error && <p role="alert">{retry.error.message}</p>}
+    </div>
+  );
+}
+
+const failureMessages: Record<string, string> = {
+  RUN_DEADLINE_EXCEEDED: 'This check exceeded its time limit. No result was published.',
+  QUEUE_JOB_MISSING: 'The queued task is no longer available.',
+  CAPTURE_INFRASTRUCTURE_FAILED: 'The capture could not finish after repeated execution errors.',
+  NAVIGATION_FAILED: 'The demo page could not be opened.',
+  CAPTURE_FAILED: 'The page opened, but its screenshot could not be captured.',
+};
+
+function Report({
+  id,
+  retryDisabled,
+  onCreated,
+}: {
+  id: string;
+  retryDisabled: boolean;
+  onCreated: (id: string) => void;
+}) {
   const [view, setView] = useState<View>('split');
   const [position, setPosition] = useState(58);
   const [issueIndex, setIssueIndex] = useState(0);
@@ -237,9 +293,12 @@ function Report({ id }: { id: string }) {
         </p>
       )}
       {run.error && (
-        <p role="alert" className="rc-warning">
-          The check could not finish: {run.error}. Run a new check to retry.
-        </p>
+        <div className="rc-warning">
+          <p role="alert">{failureMessages[run.error] ?? 'The check could not finish.'}</p>
+          {run.status === 'failed' && (
+            <RetryCheck run={run} disabled={retryDisabled} onCreated={onCreated} />
+          )}
+        </div>
       )}
       {run.capture && (
         <>
@@ -457,7 +516,12 @@ export default function ReleaseConsole() {
             <span className="dp-environment">Local demo · Desktop</span>
           </div>
           {selected ? (
-            <Report key={selected} id={selected} />
+            <Report
+              key={selected}
+              id={selected}
+              retryDisabled={active || mutation.isPending}
+              onCreated={setSelected}
+            />
           ) : (
             <div className="rc-empty">
               <div className="dp-eyebrow">YOUR FIRST BASELINE</div>

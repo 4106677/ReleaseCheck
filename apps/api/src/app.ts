@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { startRecovery } from './recovery.js';
 import {
   approveBaselineSchema,
   createRunSchema,
@@ -16,6 +17,13 @@ export function buildApp(
   logger = false,
 ) {
   const app = Fastify({ logger, bodyLimit: 8192 });
+  let stopRecovery: (() => Promise<void>) | undefined;
+  app.addHook('onReady', async () => {
+    stopRecovery = startRecovery(repository, app.log);
+  });
+  app.addHook('preClose', async () => {
+    await stopRecovery?.();
+  });
   app.addHook('onRequest', async (request, reply) => {
     const host = request.headers.host?.split(':')[0];
     if (!host || !['127.0.0.1', 'localhost'].includes(host)) {
@@ -117,13 +125,11 @@ export function buildApp(
         .send({ code: 'NOT_FOUND', message: 'Project not found.', requestId: request.id });
     const input = approveBaselineSchema.safeParse(request.body);
     if (!input.success)
-      return reply
-        .code(400)
-        .send({
-          code: 'INVALID_REQUEST',
-          message: 'Provide a run ID and expected baseline version.',
-          requestId: request.id,
-        });
+      return reply.code(400).send({
+        code: 'INVALID_REQUEST',
+        message: 'Provide a run ID and expected baseline version.',
+        requestId: request.id,
+      });
     return repository.approveBaseline(input.data);
   });
   app.get('/api/artifacts/:id', async (request, reply) => {

@@ -30,7 +30,8 @@
     "dev:api": "node --env-file-if-exists=.env apps/api/dist/main.js",
     "dev:worker": "node --env-file-if-exists=.env apps/worker/dist/main.js",
     "dev:fixture": "node --env-file-if-exists=.env fixtures/demo-site/dist/main.js",
-    "dev:web": "npm run dev -w @releasecheck/web"
+    "dev:web": "npm run dev -w @releasecheck/web",
+    "test:recovery-ui": "node --env-file-if-exists=.env scripts/recovery-smoke.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

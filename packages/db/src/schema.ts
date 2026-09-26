@@ -20,6 +20,7 @@ export const runs = pgTable('rc_runs', {
   status: text().$type<Run['status']>().notNull(),
   verdict: text().$type<Run['verdict']>().notNull(),
   attempt: integer().notNull(),
+  attemptDeadline: timestamp('attempt_deadline', { withTimezone: true }),
   error: text(),
   comparison: jsonb().$type<ComparisonResult>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
