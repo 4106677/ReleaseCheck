@@ -6,6 +6,7 @@ import { chromium } from 'playwright';
 const browser = await chromium.launch({ headless: true, chromiumSandbox: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1050 } });
+  page.setDefaultTimeout(15_000);
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('http://127.0.0.1:5173');
@@ -172,7 +173,7 @@ try {
   await page.getByRole('heading', { name: 'Page not found' }).waitFor();
   await page.getByRole('link', { name: 'Back to checks', exact: true }).click();
   await page.goto('http://127.0.0.1:5173/runs/00000000-0000-4000-8000-000000000099');
-  await page.getByRole('alert').filter({ hasText: 'Run not found.' }).waitFor();
+  await page.getByRole('alert').filter({ hasText: 'Resource not found.' }).waitFor();
   // A permalink must not depend on inclusion in the latest-20 history page.
   await page.route('**/api/projects/*/runs', (route) => route.fulfill({ json: [] }));
   await page.goto(latestUrl);

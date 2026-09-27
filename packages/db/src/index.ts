@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { and, desc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
@@ -46,6 +46,41 @@ export class Repository {
   readonly db;
   constructor(readonly pool: Pool) {
     this.db = drizzle(pool);
+  }
+
+  async createSession(userId: string) {
+    const token = randomBytes(32).toString('hex');
+    const hash = createHash('sha256').update(token).digest('hex');
+    await this.pool.query(
+      "INSERT INTO rc_sessions (token_hash, user_id, expires_at) VALUES ($1, $2, clock_timestamp() + interval '7 days')",
+      [hash, userId],
+    );
+    return token;
+  }
+
+  async sessionUser(token: string) {
+    if (!/^[a-f0-9]{64}$/.test(token)) return null;
+    const hash = createHash('sha256').update(token).digest('hex');
+    const result = await this.pool.query<{ id: string; displayName: string }>(
+      'SELECT u.id, u.display_name AS "displayName" FROM rc_sessions s JOIN rc_users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.expires_at > clock_timestamp()',
+      [hash],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async revokeSession(token: string) {
+    const hash = createHash('sha256').update(token).digest('hex');
+    await this.pool.query('DELETE FROM rc_sessions WHERE token_hash = $1', [hash]);
+  }
+
+  async ownsResource(userId: string, kind: 'projects' | 'runs' | 'artifacts', id: string) {
+    const query =
+      kind === 'projects'
+        ? 'SELECT 1 FROM rc_projects WHERE id = $1 AND owner_id = $2'
+        : kind === 'runs'
+          ? 'SELECT 1 FROM rc_runs r JOIN rc_projects p ON p.id = r.project_id WHERE r.id = $1 AND p.owner_id = $2'
+          : 'SELECT 1 FROM rc_artifacts a JOIN rc_runs r ON r.id = a.run_id JOIN rc_projects p ON p.id = r.project_id WHERE a.id = $1 AND p.owner_id = $2';
+    return (await this.pool.query(query, [id, userId])).rowCount === 1;
   }
 
   async getProject() {
@@ -184,6 +219,7 @@ export class Repository {
     return this.db
       .select({ id: runs.id, status: runs.status, createdAt: runs.createdAt })
       .from(runs)
+      .where(eq(runs.projectId, DEMO_PROJECT_ID))
       .orderBy(desc(runs.createdAt), desc(runs.id))
       .limit(20);
   }
@@ -338,7 +374,7 @@ export class Repository {
     return { baseline: row ? toBaseline(row) : null };
   }
 
-  async approveBaseline(input: ApproveBaseline) {
+  async approveBaseline(input: ApproveBaseline, approvedBy = 'local-dev-user') {
     return this.db.transaction(async (tx) => {
       // Shared with createRun: either the approval or the queued snapshot wins,
       // never a mixture. Versions are append-only and never change old reports.
@@ -378,7 +414,7 @@ export class Repository {
           sourceRunId: input.runId,
           artifactId: capture.artifactId,
           approvedAt: new Date(),
-          approvedBy: 'local-dev-user',
+          approvedBy,
         })
         .returning();
       return { baseline: toBaseline(approved!) };

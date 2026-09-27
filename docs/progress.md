@@ -1,5 +1,28 @@
 # Состояние проекта
 
+## 27 сентября 2026 — серверные сессии и граница доступа
+
+- Миграция 006 добавляет users, sessions и owner_id. Старый demo принадлежит
+  локальному пользователю; у новых проектов владелец должен задаваться явно.
+- Сессии: случайный 256-bit token, только SHA-256 hash в PostgreSQL, срок 7 дней,
+  отзыв при logout. Неверные и истёкшие сессии отвергаются.
+- Session-mode API требует cookie и владельца для project/run/baseline/artifact
+  endpoints. Чужие ресурсы возвращают 404. Мутации требуют допустимый Origin.
+- История ограничена demo project ID, принятие baseline записывает ID текущего
+  пользователя. Auth/API ответы имеют private/no-store.
+- Локальный entrypoint по-прежнему local-only с доверенной локальной identity.
+  Session-mode пока включается через buildApp для интеграции: GitHub callback,
+  выдача cookie браузеру и экран входа ещё не реализованы. Публичный запуск закрыт.
+
+Проверки: build, TypeScript, lint; 32 unit + 23 integration. Проверены anonymous,
+forged/expired token, чужие PNG/Run/project/baseline, запрещённые мутации без Origin,
+успешное изменение владельцем и отзыв сессии. Полный browser smoke local-mode.
+
+Ветка `codex/session-access`, поверх `codex/runner-retries` (PR #10, CI прошёл).
+Следующий этап: GitHub OAuth поверх этой границы, с state/PKCE, выдачей сессии
+и экраном входа. Для реального входа потребуется настройка OAuth application;
+секреты не добавляются в репозиторий. Этап авторизации целиком ещё не закрыт.
+
 ## 27 сентября 2026 — обычные retry/backoff runner
 
 - После временной infrastructure error Run возвращается в queued, с сохранением
