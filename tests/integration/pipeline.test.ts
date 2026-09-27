@@ -255,7 +255,7 @@ describe('API → PostgreSQL queue → browser → artifact', () => {
     expect(image.rawPayload.length).toBeGreaterThan(1000);
   });
 
-  it('reports the deliberate JavaScript and HTTP regressions', async () => {
+  it('reports the deliberate JavaScript, HTTP and broken-link regressions', async () => {
     const response = await post({ variant: 'regression' });
     worker = await startWorker(pool, storage, origin);
     const result = await waitForRun(response.json().id);
@@ -263,6 +263,13 @@ describe('API → PostgreSQL queue → browser → artifact', () => {
     expect(result.verdict).toBe('attention');
     const grouped = groupFindings(result.capture!.findings);
     expect(grouped).toHaveLength(2);
+    expect(result.capture?.links?.results).toEqual([
+      expect.objectContaining({
+        status: 'broken',
+        httpStatus: 404,
+        url: `${origin}/missing-shipping`,
+      }),
+    ]);
     const network = grouped.find((group) => group.kind === 'http')!;
     expect(network.relation).toBe('resource');
     expect(network.observations.map(({ finding }) => finding.kind).sort()).toEqual([
@@ -440,4 +447,41 @@ it('keeps desktop and mobile baselines independent, including queued snapshots',
     status: 'matched',
     baseline: { sourceRunId: desktop.id, version: 1 },
   });
+});
+
+it('does not pass matched pixels when links are broken or coverage is incomplete', async () => {
+  worker = await startWorker(pool, storage, origin);
+  const original = await waitForRun((await post()).json().id);
+  await repository.approveBaseline({ runId: original.id, expectedVersion: 0 });
+  const matched = await waitForRun((await post()).json().id);
+  expect(matched.verdict).toBe('pass');
+  await worker.stop();
+  worker = undefined;
+  for (const [status, truncated, verdict] of [
+    ['broken', false, 'attention'],
+    ['unverified', false, 'inconclusive'],
+    ['ok', true, 'inconclusive'],
+  ] as const) {
+    const id = (await post()).json().id;
+    const claim = await repository.claim(id);
+    const artifact = { id: randomUUID(), key: `${randomUUID()}.png`, checksum: 'test', bytes: 100 };
+    const diff = { ...artifact, id: randomUUID(), key: `${randomUUID()}.png` };
+    if (matched.comparison?.status !== 'matched') throw new Error('Expected matched fixture');
+    await repository.complete(
+      id,
+      claim!.attempt,
+      {
+        width: 1440,
+        height: 900,
+        browserVersion: matched.capture!.browserVersion,
+        profileHash: matched.capture!.profileHash,
+        findings: [],
+        links: { results: [{ url: `${origin}/test`, status }], truncated, skipped: 0 },
+      },
+      artifact,
+      { ...matched.comparison, diffArtifactId: diff.id },
+      diff,
+    );
+    expect((await repository.getRun(id))?.verdict).toBe(verdict);
+  }
 });

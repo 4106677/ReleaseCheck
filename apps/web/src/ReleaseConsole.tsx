@@ -465,6 +465,47 @@ function Report({
               </div>
             </aside>
           </div>
+          <section className="rc-links" aria-label="Internal links">
+            <h2>Internal links</h2>
+            {run.capture.links ? (
+              <>
+                <p>
+                  HEAD checks of up to 20 unique same-origin addresses. Redirects are not followed;
+                  external links and unsupported addresses are skipped.
+                </p>
+                <p>
+                  {run.capture.links.results.length} checked · {run.capture.links.skipped} skipped
+                </p>
+                {run.capture.links.truncated && (
+                  <p className="rc-warning">Link limit reached. Some addresses were not checked.</p>
+                )}
+                {run.capture.links.results.length === 0 && <p>No eligible internal links found.</p>}
+                <ul>
+                  {run.capture.links.results.map((link) => (
+                    <li key={link.url}>
+                      <strong>
+                        {link.status === 'ok'
+                          ? 'Available'
+                          : link.status === 'broken'
+                            ? 'Broken link'
+                            : 'Not verified'}
+                        {link.httpStatus ? ` · HTTP ${link.httpStatus}` : ''}
+                      </strong>
+                      <code>{link.url}</code>
+                      {link.status === 'unverified' && (
+                        <p>
+                          Redirect, unsupported HEAD request, timeout or connection failure.
+                          Availability is unknown.
+                        </p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p>Links were not checked in this older report. Run a new check to inspect them.</p>
+            )}
+          </section>
           <BaselineApproval run={run} />
         </>
       )}

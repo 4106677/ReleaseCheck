@@ -71,3 +71,14 @@ Mobile остаётся responsive viewport без изменения UA/touch. 
 границы обещаний продукта и независимость capture от размеров окна приложения.
 Batch-запуски нескольких страниц/viewport потребуют PageResult и partial results;
 их не подменяем увеличением текущего deadline.
+
+## Ограниченный HEAD link check (27 сентября)
+
+Link evidence хранится отдельно от browser findings: HTTP 404 ресурса при
+загрузке страницы и HTTP 404 гиперссылки — разные наблюдения. Сначала screenshot,
+затем HEAD requests без cookie и redirect following. DOM учитывает resolved href
+(включая base URL), а runner повторно проверяет origin. Нет внешнего обхода.
+Не используем GET fallback для серверов без HEAD: сохраняем unverified и
+inconclusive вместо ложного pass. Лимиты оставляют проверку внутри текущего
+60-секундного runner budget. Это контракт для контролируемого демо; публичные
+URL требуют отдельной сетевой изоляции и политики безопасных запросов.

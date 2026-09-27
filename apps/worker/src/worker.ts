@@ -78,6 +78,7 @@ export function captureTask(
           browserVersion: output.browserVersion,
           profileHash: output.profileHash,
           findings: output.findings,
+          links: output.links,
         },
         artifact,
         comparison,
