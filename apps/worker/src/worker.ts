@@ -97,13 +97,20 @@ export function captureTask(
       );
       if (helpers.job.attempts >= helpers.job.max_attempts) {
         await repository.fail(runId, claim.attempt, 'CAPTURE_INFRASTRUCTURE_FAILED');
+      } else {
+        await repository.awaitRetry(runId, claim.attempt);
       }
       throw error;
     }
   };
 }
 
-export async function startWorker(pool: Pool, storage: LocalStorage, fixtureOrigin: string) {
+export async function startWorker(
+  pool: Pool,
+  storage: LocalStorage,
+  fixtureOrigin: string,
+  execute: (input: CaptureInput) => Promise<CaptureOutput> = executeCapture,
+) {
   const repository = new Repository(pool);
   await repository.recoverRuns();
   return run({
@@ -112,6 +119,6 @@ export async function startWorker(pool: Pool, storage: LocalStorage, fixtureOrig
     pollInterval: 250,
     noHandleSignals: true,
     parsedCronItems: [],
-    taskList: { capture_run: captureTask(repository, storage, fixtureOrigin) },
+    taskList: { capture_run: captureTask(repository, storage, fixtureOrigin, execute) },
   });
 }

@@ -12,6 +12,7 @@ import { createPool, Repository, migrate } from '@releasecheck/db';
 import { LocalStorage } from '@releasecheck/storage';
 import { DEMO_PROJECT_ID, isTerminal } from '@releasecheck/contracts';
 import { buildApp } from '../../apps/api/dist/app.js';
+import { executeCapture } from '../../apps/worker/dist/runner.js';
 import { startWorker } from '../../apps/worker/dist/worker.js';
 import { createFixtureServer } from '../../fixtures/demo-site/dist/server.js';
 
@@ -213,5 +214,88 @@ describe('Interrupted check recovery', () => {
     await expire(next.id);
     expect(await repository.recoverRuns()).toEqual([]);
     expect(await repository.getRun(next.id)).toEqual(completed);
+  });
+});
+
+describe('ordinary queue retries', () => {
+  it('waits for Graphile backoff and publishes once after a temporary runner failure', async () => {
+    const { id } = await create();
+    let calls = 0;
+    worker = await startWorker(pool, storage, origin, async (input) => {
+      calls++;
+      if (calls === 1) throw new Error('Simulated temporary browser launch failure');
+      return executeCapture(input);
+    });
+    await waitFor(
+      () => queueJob(id),
+      (job) => job?.attempts === 1 && job.locked_by === null,
+    );
+    expect(await repository.getRun(id)).toMatchObject({
+      status: 'queued',
+      attempt: 1,
+      capture: null,
+    });
+    const queued = await pool.query(
+      'SELECT run_at > clock_timestamp() AS delayed FROM graphile_worker.jobs WHERE key = $1',
+      [id],
+    );
+    expect(queued.rows[0].delayed).toBe(true);
+    await repository.recoverRuns();
+    expect((await repository.getRun(id))?.status).toBe('queued');
+    const completed = await waitFor(
+      () => repository.getRun(id),
+      (result) => result?.status === 'completed',
+    );
+    expect(completed).toMatchObject({ attempt: 2, error: null });
+    expect(calls).toBe(2);
+    expect(
+      (await pool.query('SELECT count(*)::int AS count FROM rc_captures WHERE run_id = $1', [id]))
+        .rows[0].count,
+    ).toBe(1);
+  });
+
+  it('exhausts exactly three attempts and allows a new check', async () => {
+    const { id } = await create();
+    let calls = 0;
+    worker = await startWorker(pool, storage, origin, async () => {
+      calls++;
+      throw new Error('Simulated runner failure');
+    });
+    const failed = await waitFor(
+      () => repository.getRun(id),
+      (result) => result?.status === 'failed',
+    );
+    expect(failed).toMatchObject({
+      attempt: 3,
+      error: 'CAPTURE_INFRASTRUCTURE_FAILED',
+      capture: null,
+    });
+    expect(calls).toBe(3);
+    await worker.stop();
+    worker = undefined;
+    const fresh = await create();
+    worker = await startWorker(pool, storage, origin);
+    expect(
+      await waitFor(
+        () => repository.getRun(fresh.id),
+        (result) => isTerminal(result!.status),
+      ),
+    ).toMatchObject({ status: 'completed', attempt: 1 });
+  });
+
+  it('does not retry page failures as infrastructure failures', async () => {
+    const { id } = await create();
+    let calls = 0;
+    worker = await startWorker(pool, storage, origin, async () => {
+      calls++;
+      return { ok: false, error: 'NAVIGATION_FAILED' };
+    });
+    expect(
+      await waitFor(
+        () => repository.getRun(id),
+        (result) => result?.status === 'failed',
+      ),
+    ).toMatchObject({ attempt: 1, error: 'NAVIGATION_FAILED' });
+    expect(calls).toBe(1);
   });
 });
