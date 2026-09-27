@@ -1,5 +1,29 @@
 # Состояние проекта
 
+## 27 сентября 2026 — ограниченная проверка внутренних ссылок
+
+- После screenshot runner собирает первые 200 anchor href, нормализует адреса
+  и проверяет до 20 уникальных same-origin ссылок методом HEAD.
+- До 1 секунды на запрос, до 8 секунд на весь проход; редиректы не выполняются,
+  внешние адреса, credentials и неподдерживаемые схемы исключены. Cookie не передаются.
+- Results отдельно от browser observations: available, broken и unverified.
+  Таймауты, redirects и 405/501 не объявляются исправными. Превышение лимита видно.
+- Миграция 005 добавляет nullable links JSON; старые отчёты явно говорят, что
+  ссылки не проверялись. Captures и link evidence публикуются одной транзакцией.
+- Broken link даёт attention даже при matched pixels. Непроверенные адреса или
+  лимит дают inconclusive, если нет других обнаруженных проблем.
+- В отчёте отдельная секция Internal links с URL и HTTP status; baseline approval
+  не снимает проблемы ссылок. Демо regression обнаруживает /missing-shipping → 404.
+
+Проверки: сборка, TypeScript, lint; 32 unit + 19 integration. Локальный HTTP server
+проверяет deduplication, redirect/no-follow, предел запросов и timeout. Integration
+проверяет сохранение и verdict для broken/unverified/truncated при matched visual.
+Browser smoke проверяет Internal links в mobile capture и полный baseline-цикл.
+
+Ветка `codex/internal-links`, поверх `codex/mobile-captures` (PR #8, CI прошёл).
+Следующий этап: надёжность обычных retry/backoff runner и ясное разделение ошибок
+исполнения от ошибок сайта. Внешние URL остаются закрыты; link check не crawler.
+
 ## 27 сентября 2026 — мобильный размер захвата
 
 - Capture size выбирается перед запуском: Desktop 1440×900 или Mobile width 390×844.

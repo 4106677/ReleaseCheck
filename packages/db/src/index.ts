@@ -13,6 +13,7 @@ import {
   type ComparisonResult,
   type CreateRun,
   type Finding,
+  type LinkCheck,
 } from '@releasecheck/contracts';
 import { artifacts, baselines, captures, projects, runs, type Snapshot } from './schema.js';
 export { migrate } from './migrate.js';
@@ -173,6 +174,7 @@ export class Repository {
             browserVersion: capture.browserVersion,
             profileHash: capture.profileHash,
             findings: capture.findings,
+            links: capture.links,
           }
         : null,
     });
@@ -215,6 +217,7 @@ export class Repository {
       browserVersion: string;
       profileHash: string | null;
       findings: Finding[];
+      links?: LinkCheck | undefined;
     },
     artifact: { id: string; key: string; checksum: string; bytes: number },
     comparison: ComparisonResult = { status: 'no_baseline' },
@@ -226,9 +229,13 @@ export class Repository {
         .set({
           status: 'completed',
           verdict:
-            capture.findings.length || comparison.status === 'changed'
+            capture.findings.length ||
+            comparison.status === 'changed' ||
+            capture.links?.results.some((link) => link.status === 'broken')
               ? 'attention'
-              : comparison.status === 'matched'
+              : comparison.status === 'matched' &&
+                  !capture.links?.truncated &&
+                  !capture.links?.results.some((link) => link.status === 'unverified')
                 ? 'pass'
                 : 'inconclusive',
           comparison,

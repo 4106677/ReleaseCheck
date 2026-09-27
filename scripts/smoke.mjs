@@ -88,6 +88,10 @@ try {
   await mobileMatched.getByText('Checks passed', { exact: true }).waitFor();
   const mobileChanged = await check('regression', 'mobile');
   await mobileChanged.getByText('Visual change', { exact: true }).waitFor();
+  await mobileChanged
+    .getByRole('region', { name: 'Internal links', exact: true })
+    .getByText('Broken link · HTTP 404', { exact: true })
+    .waitFor();
   assert.match(await mobileChanged.locator('.dp-browser-size').innerText(), /390 × 844/);
   await mobileChanged.getByRole('button', { name: 'Difference', exact: true }).click();
   await page.screenshot({ path: '.local/smoke/mobile-capture-desktop.png', fullPage: true });

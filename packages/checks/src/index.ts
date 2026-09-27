@@ -1,8 +1,10 @@
+import { checkLinks } from './links.js';
+export { checkLinks } from './links.js';
 import { release } from 'node:os';
 import { captureProfileHash } from './compare.js';
 import { chromium } from 'playwright';
 import { z } from 'zod';
-import { findingSchema, type Finding } from '@releasecheck/contracts';
+import { findingSchema, linkCheckSchema, type Finding } from '@releasecheck/contracts';
 export {
   captureProfileHash,
   compareCaptures,
@@ -53,6 +55,7 @@ export const captureOutputSchema = z.discriminatedUnion('ok', [
     browserVersion: z.string(),
     profileHash: z.string().regex(/^[a-f0-9]{64}$/),
     findings: z.array(findingSchema).max(101),
+    links: linkCheckSchema.optional(),
   }),
   z.object({ ok: z.literal(false), error: z.enum(['NAVIGATION_FAILED', 'CAPTURE_FAILED']) }),
 ]);
@@ -167,8 +170,21 @@ export async function captureFixture(input: CaptureInput): Promise<CaptureOutput
         timeout: 10_000,
       });
       if (screenshot.length > 4 * 1024 * 1024) return { ok: false, error: 'CAPTURE_FAILED' };
+      const anchors = await page.locator('a[href]').evaluateAll((elements) => ({
+        hrefs: elements
+          .slice(0, 200)
+          .map((element) => (element as HTMLAnchorElement).href.slice(0, 2049)),
+        truncated: elements.length > 200,
+      }));
+      const links = await checkLinks(
+        anchors.hrefs,
+        input.url,
+        input.fixtureOrigin,
+        anchors.truncated,
+      );
       return {
         ok: true,
+        links,
         screenshot: screenshot.toString('base64'),
         width: input.width,
         height: input.height,

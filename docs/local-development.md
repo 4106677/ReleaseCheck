@@ -196,7 +196,7 @@ AppArmor, разрешающий user namespaces только двум browser e
 
 - Один demo-проект, одна страница, два фиксированных viewport (один на Run); нет пользователя и OAuth.
 - История ограничена последними 20 запусками, без cursor pagination.
-- Нет link checker и удаления истории. Browser observations
+- Нет рекурсивного crawler и удаления истории. Browser observations
   группируются по строгим правилам; для transport/JavaScript пока нет корреляции
   причин между разными видами событий.
 - Recovery работает по deadline, без heartbeat и автоматического продолжения
@@ -237,3 +237,17 @@ Mobile width — проверка responsive CSS в Chromium с deviceScaleFacto
 Baseline разделены по размерам и capture profile. Новая SQL-миграция не требуется:
 размеры и hash уже хранятся в captures, viewport добавлен в JSON snapshot.
 Smoke сохраняет `.local/smoke/mobile-capture-{desktop,mobile}.png`.
+
+## Внутренние ссылки
+
+Миграция 005: выполните `npm run db:migrate` перед запуском обновлённых API/worker.
+Runner проверяет только ссылки исходной страницы: первые 200 anchors, максимум
+20 уникальных same-origin URL, без рекурсии. Fragment-only и внешние адреса
+пропускаются; пути и query сохраняются. HEAD без cookie, без follow redirects,
+1 секунда на запрос и 8 секунд на проход. Screenshot снимается до link probing.
+GET fallback не выполняется: 405/501, redirect или network timeout → unverified.
+2xx → available, остальные 4xx/5xx → broken. Проверка anchor fragment внутри
+страницы, авторизованных ресурсов и итоговой цели редиректа пока не поддерживается.
+`capture.links` содержит results, skipped и truncated; null в старых captures.
+Лимит или unverified не позволяют pass, broken link требует attention. Пропущенные
+внешние/неподдерживаемые ссылки явно исключены из обещанного покрытия.

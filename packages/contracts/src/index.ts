@@ -82,6 +82,20 @@ export const comparisonSchema = z.discriminatedUnion('status', [
 export type Baseline = z.infer<typeof baselineSchema>;
 export type ComparisonResult = z.infer<typeof comparisonSchema>;
 export type ApproveBaseline = z.infer<typeof approveBaselineSchema>;
+export const linkCheckSchema = z.object({
+  results: z
+    .array(
+      z.object({
+        url: z.string().max(2048),
+        status: z.enum(['ok', 'broken', 'unverified']),
+        httpStatus: z.number().int().min(100).max(599).optional(),
+      }),
+    )
+    .max(20),
+  skipped: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+});
+export type LinkCheck = z.infer<typeof linkCheckSchema>;
 export const runSchema = z.object({
   id: runIdSchema,
   status: runStatusSchema,
@@ -101,6 +115,7 @@ export const runSchema = z.object({
       browserVersion: z.string(),
       profileHash: z.string().nullable(),
       findings: z.array(findingSchema),
+      links: linkCheckSchema.nullish(),
     })
     .nullable(),
 });

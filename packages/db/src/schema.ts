@@ -1,5 +1,5 @@
 import { integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import type { Baseline, ComparisonResult, Finding, Run } from '@releasecheck/contracts';
+import type { Baseline, ComparisonResult, Finding, LinkCheck, Run } from '@releasecheck/contracts';
 
 export type Snapshot = {
   url: string;
@@ -54,6 +54,7 @@ export const captures = pgTable('rc_captures', {
   browserVersion: text('browser_version').notNull(),
   profileHash: text('profile_hash'),
   findings: jsonb().$type<Finding[]>().notNull(),
+  links: jsonb().$type<LinkCheck>(),
 });
 
 export const baselines = pgTable('rc_baselines', {
