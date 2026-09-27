@@ -277,3 +277,9 @@ owner_id не имеет default: владелец должен быть ука�
 с callback; текущий код не является завершённой публичной авторизацией.
 Чужие ресурсные ID возвращают 404, anonymous/expired — 401. Для session mutations
 обязателен разрешённый Origin. Заголовки клиента не назначают identity.
+
+## GitHub OAuth
+
+Owner-only callback и экран входа добавлены. Настройка AUTH_MODE=session и актуальные
+границы описаны в [github-login.md](github-login.md). Local-mode остаётся default;
+реальный вход требует OAuth App, публичный NODE_ENV=production по-прежнему закрыт.

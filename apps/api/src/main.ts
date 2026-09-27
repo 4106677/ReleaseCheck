@@ -1,5 +1,6 @@
 import { createPool, Repository } from '@releasecheck/db';
 import { LocalStorage } from '@releasecheck/storage';
+import { oauthConfigSchema } from './oauth.js';
 import { buildApp } from './app.js';
 
 if (process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'test')
@@ -8,11 +9,24 @@ if (process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'test')
   );
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 const pool = createPool(process.env.DATABASE_URL);
+const mode = process.env.AUTH_MODE ?? 'local';
+if (!['local', 'session'].includes(mode)) throw new Error('Invalid AUTH_MODE');
+const oauth =
+  mode === 'session'
+    ? oauthConfigSchema.parse({
+        clientId: process.env.GITHUB_CLIENT_ID,
+        clientSecret: process.env.GITHUB_CLIENT_SECRET,
+        ownerId: process.env.GITHUB_OWNER_ID,
+        appOrigin: process.env.APP_ORIGIN,
+      })
+    : undefined;
 const app = buildApp(
   new Repository(pool),
   new LocalStorage(process.env.ARTIFACT_DIR ?? '.artifacts'),
   process.env.FIXTURE_ORIGIN ?? 'http://127.0.0.1:4174',
   true,
+  mode as 'local' | 'session',
+  oauth,
 );
 app.addHook('onClose', async () => {
   await pool.end();

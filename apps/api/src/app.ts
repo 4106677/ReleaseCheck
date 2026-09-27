@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { installOAuth, type OAuthConfig, type GithubIdentity } from './oauth.js';
 import { installAccess, type AccessMode } from './access.js';
 import { startRecovery } from './recovery.js';
 import {
@@ -18,8 +19,19 @@ export function buildApp(
   fixtureOrigin: string,
   logger = false,
   accessMode: AccessMode = 'local',
+  oauth?: OAuthConfig,
+  identity?: GithubIdentity,
 ) {
-  const app = Fastify({ logger, bodyLimit: 8192 });
+  const app = Fastify({
+    logger: logger
+      ? {
+          serializers: {
+            req: (request) => ({ method: request.method, url: request.url.split('?')[0] ?? '' }),
+          },
+        }
+      : false,
+    bodyLimit: 8192,
+  });
   let stopRecovery: (() => Promise<void>) | undefined;
   app.addHook('onReady', async () => {
     stopRecovery = startRecovery(repository, app.log);
@@ -44,6 +56,7 @@ export function buildApp(
     }
   });
   installAccess(app, repository, accessMode);
+  if (oauth && accessMode === 'session') installOAuth(app, repository, oauth, identity);
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof Conflict)
       return reply.code(409).send({

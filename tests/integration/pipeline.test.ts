@@ -569,3 +569,82 @@ it('enforces session ownership for reports, artifacts and mutations, including l
     await pool.query('DELETE FROM rc_users WHERE id = $1', [stranger]);
   }
 });
+
+it('binds OAuth to a browser, consumes state once and grants only the configured owner', async () => {
+  const config = {
+    clientId: 'test-client',
+    clientSecret: 'test-secret',
+    ownerId: '1234',
+    appOrigin: 'http://127.0.0.1:5173' as const,
+  };
+  let providerId = '1234';
+  let calls = 0;
+  let challenge = '';
+  const oauthApp = buildApp(
+    repository,
+    storage,
+    origin,
+    false,
+    'session',
+    config,
+    async (code, verifier) => {
+      calls++;
+      expect(code).toBe('test-code');
+      const { createHash } = await import('node:crypto');
+      expect(createHash('sha256').update(verifier).digest('base64url')).toBe(challenge);
+      return providerId;
+    },
+  );
+  async function begin() {
+    const response = await oauthApp.inject('/api/auth/github');
+    expect(response.statusCode).toBe(302);
+    const url = new URL(response.headers.location!);
+    expect(url.origin).toBe('https://github.com');
+    expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(url.searchParams.get('scope')).toBe('');
+    challenge = url.searchParams.get('code_challenge')!;
+    const cookie = String(response.headers['set-cookie']).split(';')[0]!;
+    return {
+      cookie,
+      url: `/api/auth/github/callback?code=test-code&state=${url.searchParams.get('state')}`,
+    };
+  }
+  try {
+    const flow = await begin();
+    expect((await oauthApp.inject(flow.url)).headers.location).toContain('auth_error');
+    expect(calls).toBe(0);
+    const response = await oauthApp.inject({ url: flow.url, headers: { cookie: flow.cookie } });
+    expect(response.headers.location).toBe(`${config.appOrigin}/`);
+    const cookies = response.headers['set-cookie'] as string[];
+    const session = cookies.find((cookie) => cookie.startsWith('rc_session='))!;
+    expect(session).toContain('HttpOnly');
+    expect(session).toContain('SameSite=Lax');
+    expect(
+      (await oauthApp.inject({ url: '/api/projects', headers: { cookie: session.split(';')[0]! } }))
+        .statusCode,
+    ).toBe(200);
+    expect(
+      (await oauthApp.inject({ url: flow.url, headers: { cookie: flow.cookie } })).headers.location,
+    ).toContain('auth_error');
+    expect(calls).toBe(1);
+    providerId = '9999';
+    const denied = await begin();
+    expect(
+      (await oauthApp.inject({ url: denied.url, headers: { cookie: denied.cookie } })).headers
+        .location,
+    ).toContain('auth_error');
+    const expired = await begin();
+    await pool.query(
+      "UPDATE rc_oauth_states SET expires_at = clock_timestamp() - interval '1 second'",
+    );
+    expect(
+      (await oauthApp.inject({ url: expired.url, headers: { cookie: expired.cookie } })).headers
+        .location,
+    ).toContain('auth_error');
+    expect(calls).toBe(2);
+  } finally {
+    await oauthApp.close();
+    await pool.query('DELETE FROM rc_oauth_states');
+    await pool.query('DELETE FROM rc_sessions');
+  }
+});
