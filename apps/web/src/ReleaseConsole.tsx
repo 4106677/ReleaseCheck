@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   groupFindings,
+  viewports,
   type FindingGroup,
   baselineStateSchema,
   createdRunSchema,
@@ -163,7 +164,7 @@ function RetryCheck({
         await request(`/projects/${DEMO_PROJECT_ID}/runs`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
-          body: JSON.stringify({ variant: run.variant }),
+          body: JSON.stringify({ variant: run.variant, viewport: run.viewport }),
         }),
       ).id,
     onSuccess: (id) => {
@@ -300,7 +301,10 @@ function Report({
         <div className="dp-stat dp-profile">
           <small>CAPTURE PROFILE</small>
           <strong>
-            Desktop<span>1440 × 900</span>
+            {run.viewport === 'mobile' ? 'Mobile width' : 'Desktop'}
+            <span>
+              {viewports[run.viewport].width} × {viewports[run.viewport].height}
+            </span>
           </strong>
         </div>
       </div>
@@ -360,6 +364,8 @@ function Report({
                 </div>
               </div>
               <ScreenshotViewer
+                width={run.capture.width}
+                height={run.capture.height}
                 view={compared ? view : 'after'}
                 position={position}
                 onPosition={setPosition}
@@ -468,6 +474,7 @@ function Report({
 
 export default function ReleaseConsole() {
   const client = useQueryClient();
+  const [viewport, setViewport] = useState<CreateRun['viewport']>('desktop');
   const [variant, setVariant] = useState<CreateRun['variant']>('baseline');
   const [key, setKey] = useState(() => crypto.randomUUID());
   const route = useReportRoute();
@@ -486,7 +493,7 @@ export default function ReleaseConsole() {
         await request(`/projects/${DEMO_PROJECT_ID}/runs`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
-          body: JSON.stringify({ variant }),
+          body: JSON.stringify({ variant, viewport }),
         }),
       ).id,
     onSuccess: (id) => {
@@ -533,6 +540,20 @@ export default function ReleaseConsole() {
             >
               <option value="baseline">Original storefront</option>
               <option value="regression">Changed storefront with errors</option>
+            </select>
+            <label htmlFor="viewport">Capture size</label>
+            <select
+              id="viewport"
+              value={viewport}
+              disabled={mutation.isPending}
+              onChange={(event) => {
+                setViewport(event.target.value as CreateRun['viewport']);
+                setKey(crypto.randomUUID());
+                mutation.reset();
+              }}
+            >
+              <option value="desktop">Desktop · 1440 × 900</option>
+              <option value="mobile">Mobile width · 390 × 844</option>
             </select>
             <button
               className="dp-summary-button"
@@ -587,7 +608,7 @@ export default function ReleaseConsole() {
                 </>
               )}
             </span>
-            <span className="dp-environment">Local demo · Desktop</span>
+            <span className="dp-environment">Local demo · Chromium</span>
           </div>
           {route.kind === 'project' ? (
             <ProjectSettings />
@@ -614,12 +635,12 @@ export default function ReleaseConsole() {
                 Capture the original storefront, review it and save your baseline. Then check the
                 changed version to see the visual difference and browser errors.
               </p>
-              <p>One page. One viewport. Real browser evidence.</p>
+              <p>One page. Two capture sizes. Separate visual baselines.</p>
             </div>
           )}
           <footer className="dp-page-footer">
             <span>Release Console</span>
-            <span>Controlled demo storefront · Chromium · 1440 × 900</span>
+            <span>Controlled demo storefront · Chromium</span>
           </footer>
         </div>
       </div>

@@ -291,7 +291,11 @@ describe('API → PostgreSQL queue → browser → artifact', () => {
     await new Promise<void>((resolve) => closedServer.listen(0, '127.0.0.1', resolve));
     const closedOrigin = `http://127.0.0.1:${(closedServer.address() as AddressInfo).port}`;
     await new Promise<void>((resolve) => closedServer.close(() => resolve()));
-    const { id } = await repository.createRun({ variant: 'baseline' }, randomUUID(), closedOrigin);
+    const { id } = await repository.createRun(
+      { variant: 'baseline', viewport: 'desktop' },
+      randomUUID(),
+      closedOrigin,
+    );
     worker = await startWorker(pool, storage, closedOrigin);
     const result = await waitForRun(id);
     expect(result).toMatchObject({
@@ -303,7 +307,11 @@ describe('API → PostgreSQL queue → browser → artifact', () => {
   });
 
   it('prevents stale attempts from publishing a result and ignores completed duplicates', async () => {
-    const { id } = await repository.createRun({ variant: 'baseline' }, randomUUID(), origin);
+    const { id } = await repository.createRun(
+      { variant: 'baseline', viewport: 'desktop' },
+      randomUUID(),
+      origin,
+    );
     const first = await repository.claim(id);
     const second = await repository.claim(id);
     const artifact = { id: randomUUID(), key: `${randomUUID()}.png`, checksum: 'test', bytes: 100 };
@@ -391,5 +399,45 @@ describe('project settings', () => {
     expect(next.comparison).toMatchObject({ status: 'matched', maxDiffRatio: 0.02 });
     expect(next.verdict).toBe('attention'); // Browser errors cannot be hidden by visual tolerance.
     expect((await repository.getRun(queued.id))?.comparison).toEqual(frozen.comparison);
+  });
+});
+
+it('keeps desktop and mobile baselines independent, including queued snapshots', async () => {
+  worker = await startWorker(pool, storage, origin);
+  const capture = async (viewport: 'desktop' | 'mobile', variant = 'baseline') =>
+    waitForRun((await post({ viewport, variant })).json().id);
+  const desktop = await capture('desktop');
+  await repository.approveBaseline({ runId: desktop.id, expectedVersion: 0 });
+  const mobile = await capture('mobile');
+  expect(mobile.viewport).toBe('mobile');
+  expect(mobile.capture).toMatchObject({ width: 390, height: 844 });
+  expect(mobile.capture!.profileHash).not.toBe(desktop.capture!.profileHash);
+  expect(mobile.comparison).toMatchObject({ status: 'no_baseline' });
+  await repository.approveBaseline({ runId: mobile.id, expectedVersion: 0 });
+  const unchanged = await capture('mobile');
+  expect(unchanged.verdict).toBe('pass');
+  expect(unchanged.comparison).toMatchObject({
+    status: 'matched',
+    baseline: { sourceRunId: mobile.id, version: 1 },
+  });
+  const changed = await capture('mobile', 'regression');
+  expect(changed.comparison).toMatchObject({
+    status: 'changed',
+    baseline: { sourceRunId: mobile.id },
+  });
+  await worker.stop();
+  worker = undefined;
+  const key = randomUUID();
+  const queued = (await post({ viewport: 'mobile' }, key)).json().id;
+  expect((await post({ viewport: 'desktop' }, key)).statusCode).toBe(409);
+  await repository.approveBaseline({ runId: changed.id, expectedVersion: 1 });
+  worker = await startWorker(pool, storage, origin);
+  expect((await waitForRun(queued)).comparison).toMatchObject({
+    status: 'matched',
+    baseline: { sourceRunId: mobile.id, version: 1 },
+  });
+  expect((await capture('desktop')).comparison).toMatchObject({
+    status: 'matched',
+    baseline: { sourceRunId: desktop.id, version: 1 },
   });
 });

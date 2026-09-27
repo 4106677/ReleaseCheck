@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createRunSchema, idempotencyKeySchema, isTerminal } from '@releasecheck/contracts';
-import { localFixtureOrigin } from '@releasecheck/checks';
+import { localFixtureOrigin, captureInputSchema } from '@releasecheck/checks';
 
 describe('local capture boundary', () => {
   it('accepts only predefined fixture variants, never a user-supplied URL', () => {
-    expect(createRunSchema.parse({})).toEqual({ variant: 'baseline' });
+    expect(createRunSchema.parse({})).toEqual({ variant: 'baseline', viewport: 'desktop' });
     expect(
       createRunSchema.safeParse({ variant: 'regression', url: 'http://internal/' }).success,
     ).toBe(false);
@@ -31,4 +31,14 @@ describe('local capture boundary', () => {
     expect(isTerminal('running')).toBe(false);
     expect(isTerminal('failed')).toBe(true);
   });
+});
+
+it('allows only the two bounded capture sizes and rejects mixed dimensions', () => {
+  expect(createRunSchema.safeParse({ viewport: 'tablet' }).success).toBe(false);
+  const input = { url: 'http://127.0.0.1:4174/', fixtureOrigin: 'http://127.0.0.1:4174' };
+  expect(captureInputSchema.safeParse({ ...input, width: 390, height: 844 }).success).toBe(true);
+  expect(captureInputSchema.safeParse({ ...input, width: 390, height: 900 }).success).toBe(false);
+  expect(captureInputSchema.safeParse({ ...input, width: 10000, height: 10000 }).success).toBe(
+    false,
+  );
 });

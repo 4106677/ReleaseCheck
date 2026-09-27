@@ -5,6 +5,7 @@ import { Repository, type Pool } from '@releasecheck/db';
 import { LocalStorage } from '@releasecheck/storage';
 import {
   compareCaptures,
+  captureInputSchema,
   localFixtureOrigin,
   type CaptureInput,
   type CaptureOutput,
@@ -24,12 +25,14 @@ export function captureTask(
     if (!claim) return;
     let uploadedKey: string | undefined;
     try {
-      const output = await execute({
-        url: claim.snapshot.url,
-        fixtureOrigin: origin,
-        width: 1440,
-        height: 900,
-      });
+      const output = await execute(
+        captureInputSchema.parse({
+          url: claim.snapshot.url,
+          fixtureOrigin: origin,
+          width: claim.snapshot.width,
+          height: claim.snapshot.height,
+        }),
+      );
       if (!output.ok) {
         await repository.fail(runId, claim.attempt, output.error);
         return;

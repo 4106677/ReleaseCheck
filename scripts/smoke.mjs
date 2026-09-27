@@ -41,7 +41,8 @@ try {
   await page.screenshot({ path: '.local/smoke/settings-mobile.png', fullPage: true });
   await page.setViewportSize({ width: 1440, height: 1050 });
   await page.getByRole('link', { name: 'Checks', exact: true }).click();
-  async function check(variant) {
+  async function check(variant, viewport = 'desktop') {
+    await page.getByLabel('Capture size').selectOption(viewport);
     await page.getByLabel('Demo version').selectOption(variant);
     const [response] = await Promise.all([
       page.waitForResponse(
@@ -61,7 +62,7 @@ try {
         .locator('.dp-capture img')
         .first()
         .evaluate((image) => image.naturalWidth),
-      1440,
+      viewport === 'mobile' ? 390 : 1440,
     );
     return report;
   }
@@ -81,6 +82,18 @@ try {
     assert.equal(response.status(), 200);
     await report.getByRole('button', { name: 'Current baseline', exact: true }).waitFor();
   }
+  const mobileOriginal = await check('baseline', 'mobile');
+  await approve(mobileOriginal);
+  const mobileMatched = await check('baseline', 'mobile');
+  await mobileMatched.getByText('Checks passed', { exact: true }).waitFor();
+  const mobileChanged = await check('regression', 'mobile');
+  await mobileChanged.getByText('Visual change', { exact: true }).waitFor();
+  assert.match(await mobileChanged.locator('.dp-browser-size').innerText(), /390 × 844/);
+  await mobileChanged.getByRole('button', { name: 'Difference', exact: true }).click();
+  await page.screenshot({ path: '.local/smoke/mobile-capture-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: '.local/smoke/mobile-capture-mobile.png', fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1050 });
   const original = await check('baseline');
   await approve(original);
   const matched = await check('baseline');

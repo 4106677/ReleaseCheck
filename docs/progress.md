@@ -1,5 +1,26 @@
 # Состояние проекта
 
+## 27 сентября 2026 — мобильный размер захвата
+
+- Capture size выбирается перед запуском: Desktop 1440×900 или Mobile width 390×844.
+  Это responsive viewport в Chromium, без эмуляции телефона/touch/UA.
+- Размер фиксируется в Run snapshot и учитывается в idempotency. Retry сохраняет
+  размер исходной проверки. Старые Run без viewport читаются как desktop.
+- Baseline candidates ограничены размером capture; profile hash уже включает
+  размеры. Первый mobile Run не использует desktop baseline. Версии независимы.
+- Viewer показывает фактические размеры и пропорции изображения; mobile capture
+  ограничен шириной 390 px, ползунок и difference доступны в обоих режимах.
+- По-прежнему один viewport на Run: сроки runner и модель атомарного результата
+  не расширялись до batch/partial results. Внешние URL закрыты.
+
+Проверки: build, TypeScript, lint; 29 unit + 18 integration. Реальный Chromium
+проверяет mobile first baseline, unchanged pass, regression diff, независимость
+эталонов и snapshot queued Run. Browser smoke покрывает оба размера и mobile retry.
+
+Ветка `codex/mobile-captures`, поверх `codex/project-settings` (PR #7, CI прошёл).
+Следующий этап: ограниченная проверка внутренних ссылок контролируемой страницы,
+с отдельным представлением результата и лимитами запросов. Решений пользователя нет.
+
 ## 26 сентября 2026 — настройки демо-проекта
 
 - Добавлена страница `/projects/<demo-id>` в выбранном Release Console.

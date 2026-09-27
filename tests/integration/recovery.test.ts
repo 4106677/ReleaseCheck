@@ -39,7 +39,8 @@ async function waitFor<T>(read: () => Promise<T>, ready: (value: T) => boolean) 
   }
   throw new Error('Recovery condition did not become true');
 }
-const create = () => repository.createRun({ variant: 'baseline' }, randomUUID(), origin);
+const create = () =>
+  repository.createRun({ variant: 'baseline', viewport: 'desktop' }, randomUUID(), origin);
 const expire = (id: string) =>
   pool.query(
     "UPDATE rc_runs SET attempt_deadline = clock_timestamp() - interval '1 second' WHERE id = $1",

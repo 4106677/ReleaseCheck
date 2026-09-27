@@ -11,6 +11,7 @@ const failed = {
   status: 'failed',
   verdict: 'inconclusive',
   variant: 'regression',
+  viewport: 'mobile',
   attempt: 3,
   createdAt: '2026-09-26T07:00:00.000Z',
   finishedAt: '2026-09-26T07:02:00.000Z',
@@ -78,7 +79,7 @@ try {
   await page.locator(`section[data-run-id="${retriedId}"]`).waitFor();
   assert.equal(new URL(page.url()).pathname, `/runs/${retriedId}`);
   assert.equal(submissions.length, 2);
-  assert.deepEqual(submissions[0].body, { variant: 'regression' }); // Select defaults to original.
+  assert.deepEqual(submissions[0].body, { variant: 'regression', viewport: 'mobile' }); // Select defaults to original.
   assert.deepEqual(submissions[1], submissions[0]); // Ambiguous retry keeps its key.
   assert.ok(submissions[0].key);
   assert.deepEqual(errors, []);
