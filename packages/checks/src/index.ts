@@ -30,19 +30,26 @@ export function localFixtureOrigin(value: string) {
   return url.origin;
 }
 
-export const captureInputSchema = z.strictObject({
-  url: z.url(),
-  fixtureOrigin: z.string().transform(localFixtureOrigin),
-  width: z.literal(1440),
-  height: z.literal(900),
-});
+export const captureInputSchema = z
+  .strictObject({
+    url: z.url(),
+    fixtureOrigin: z.string().transform(localFixtureOrigin),
+    width: z.union([z.literal(1440), z.literal(390)]),
+    height: z.union([z.literal(900), z.literal(844)]),
+  })
+  .refine(
+    (value) =>
+      (value.width === 1440 && value.height === 900) ||
+      (value.width === 390 && value.height === 844),
+    'Unsupported viewport',
+  );
 export type CaptureInput = z.infer<typeof captureInputSchema>;
 export const captureOutputSchema = z.discriminatedUnion('ok', [
   z.object({
     ok: z.literal(true),
     screenshot: z.string().max(6_000_000),
-    width: z.literal(1440),
-    height: z.literal(900),
+    width: z.union([z.literal(1440), z.literal(390)]),
+    height: z.union([z.literal(900), z.literal(844)]),
     browserVersion: z.string(),
     profileHash: z.string().regex(/^[a-f0-9]{64}$/),
     findings: z.array(findingSchema).max(101),

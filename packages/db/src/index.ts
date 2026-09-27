@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import {
   DEMO_PROJECT_ID,
+  viewports,
   runSchema,
   baselineSchema,
   projectSchema,
@@ -84,7 +85,11 @@ export class Repository {
         .from(runs)
         .where(and(eq(runs.projectId, DEMO_PROJECT_ID), eq(runs.idempotencyKey, key)));
       if (existing) {
-        if (existing.snapshot.variant !== input.variant) throw new Conflict('IDEMPOTENCY_CONFLICT');
+        if (
+          existing.snapshot.variant !== input.variant ||
+          (existing.snapshot.viewport ?? 'desktop') !== input.viewport
+        )
+          throw new Conflict('IDEMPOTENCY_CONFLICT');
         return { id: existing.id, reused: true };
       }
       const [active] = await tx
@@ -99,10 +104,18 @@ export class Repository {
       const id = randomUUID();
       const url = new URL(input.variant === 'regression' ? '/?regression=1' : '/', fixtureOrigin)
         .href;
+      const size = viewports[input.viewport];
       const candidates = await tx
-        .selectDistinctOn([baselines.profileHash])
+        .selectDistinctOn([baselines.profileHash], getTableColumns(baselines))
         .from(baselines)
-        .where(eq(baselines.projectId, DEMO_PROJECT_ID))
+        .innerJoin(captures, eq(captures.runId, baselines.sourceRunId))
+        .where(
+          and(
+            eq(baselines.projectId, DEMO_PROJECT_ID),
+            eq(captures.width, size.width),
+            eq(captures.height, size.height),
+          ),
+        )
         .orderBy(baselines.profileHash, desc(baselines.version));
       await tx.insert(runs).values({
         id,
@@ -111,8 +124,8 @@ export class Repository {
         snapshot: {
           url,
           variant: input.variant,
-          width: 1440,
-          height: 900,
+          viewport: input.viewport,
+          ...size,
           settingsVersion: project.settingsVersion,
           comparisonOptions: {
             pixelThreshold: 0.1,
@@ -146,6 +159,7 @@ export class Repository {
       status: run.status,
       verdict: run.verdict,
       variant: run.snapshot.variant,
+      viewport: run.snapshot.viewport ?? 'desktop',
       attempt: run.attempt,
       createdAt: run.createdAt.toISOString(),
       finishedAt: run.finishedAt?.toISOString() ?? null,

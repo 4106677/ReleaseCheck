@@ -7,7 +7,11 @@ export function ScreenshotViewer({
   before,
   after,
   diff,
+  width = 1440,
+  height = 900,
 }: {
+  width?: number;
+  height?: number;
   before?: string | undefined;
   after: string;
   diff?: string | undefined;
@@ -16,7 +20,10 @@ export function ScreenshotViewer({
   onPosition: (value: number) => void;
 }) {
   return (
-    <div className="dp-viewer">
+    <div
+      className="dp-viewer"
+      style={width === 390 ? { maxWidth: 390, marginInline: 'auto' } : undefined}
+    >
       <div className="dp-browser-bar">
         <div className="dp-browser-dots" aria-hidden="true">
           <i />
@@ -24,11 +31,15 @@ export function ScreenshotViewer({
           <i />
         </div>
         <span>northstar.demo /</span>
-        <span className="dp-browser-size">1440 × 900</span>
+        <span className="dp-browser-size">
+          {width} × {height}
+        </span>
       </div>
       <div
         className={`dp-capture ${view === 'split' ? 'dp-capture-split' : ''}`}
-        style={{ '--position': `${position}%` } as CSSProperties}
+        style={
+          { '--position': `${position}%`, aspectRatio: `${width} / ${height}` } as CSSProperties
+        }
         onDragStart={(event) => event.preventDefault()}
         onPointerDown={(event) => {
           if (view !== 'split') return;
@@ -63,8 +74,8 @@ export function ScreenshotViewer({
                 ? 'Approved version of the demo storefront'
                 : 'Current capture of the demo storefront'
           }
-          width="1440"
-          height="900"
+          width={width}
+          height={height}
         />
         {view === 'split' && (
           <>
@@ -72,8 +83,8 @@ export function ScreenshotViewer({
               className="dp-before-overlay"
               src={before}
               alt="Baseline overlaid on the left of the comparison"
-              width="1440"
-              height="900"
+              width={width}
+              height={height}
             />
             <div className="dp-split-line" aria-hidden="true">
               <span>‹ ›</span>

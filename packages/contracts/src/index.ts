@@ -13,8 +13,14 @@ export const updateProjectSchema = z.strictObject({
 });
 export type Project = z.infer<typeof projectSchema>;
 export type UpdateProject = z.infer<typeof updateProjectSchema>;
+export const viewportSchema = z.enum(['desktop', 'mobile']);
+export const viewports = {
+  desktop: { width: 1440, height: 900 },
+  mobile: { width: 390, height: 844 },
+} as const;
 export const createRunSchema = z.strictObject({
   variant: z.enum(['baseline', 'regression']).default('baseline'),
+  viewport: viewportSchema.default('desktop'),
 });
 export const idempotencyKeySchema = z
   .string()
@@ -81,6 +87,7 @@ export const runSchema = z.object({
   status: runStatusSchema,
   verdict: z.enum(['pass', 'attention', 'inconclusive']),
   variant: z.enum(['baseline', 'regression']),
+  viewport: viewportSchema.default('desktop'),
   attempt: z.number().int().nonnegative(),
   createdAt: z.iso.datetime(),
   finishedAt: z.iso.datetime().nullable(),

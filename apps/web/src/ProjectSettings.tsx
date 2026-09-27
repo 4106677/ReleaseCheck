@@ -124,7 +124,7 @@ export function ProjectSettings() {
         </div>
       </div>
       <div className="rc-notice">
-        Controlled storefront · Homepage / · Chromium · Desktop 1440 × 900
+        Controlled storefront · Homepage / · Chromium · Desktop 1440 × 900 / Mobile width 390 × 844
       </div>
       <SettingsForm initial={project.data} />
     </section>

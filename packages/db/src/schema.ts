@@ -4,6 +4,7 @@ import type { Baseline, ComparisonResult, Finding, Run } from '@releasecheck/con
 export type Snapshot = {
   url: string;
   variant: Run['variant'];
+  viewport?: Run['viewport'];
   width: number;
   height: number;
   settingsVersion?: number;
