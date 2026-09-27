@@ -261,3 +261,19 @@ Graphile сохраняет собственный backoff; domain attempt ос�
 повторяются автоматически. Hard crash по-прежнему обрабатывается recovery deadline.
 Тесты используют внедрённый executor для детерминированных сбоев, настоящую очередь
 и настоящий child runner для успешной попытки. Новая миграция не требуется.
+
+## Сессии и владельцы (подготовительный этап OAuth)
+
+Примените миграцию 006 через `npm run db:migrate`. Demo project присваивается
+локальному user ID `00000000-0000-4000-8000-000000000002`. У новых проектов
+owner_id не имеет default: владелец должен быть указан явно.
+`buildApp(..., false, 'session')` включает обязательную cookie `rc_session` и
+проверки владельца; default local-mode используется существующим local-only main.
+Нет HTTP-метода создания сессии или выбора произвольного user ID. createSession
+предназначен для будущего проверенного OAuth callback, сейчас используется тестами.
+В PostgreSQL хранится только SHA-256 hash 32 случайных bytes; expiry — 7 суток.
+`GET /api/auth/session` возвращает identity/mode, `POST /api/auth/logout` отзывает
+сессию и очищает cookie. Cookie issuance и Secure для HTTPS добавляются вместе
+с callback; текущий код не является завершённой публичной авторизацией.
+Чужие ресурсные ID возвращают 404, anonymous/expired — 401. Для session mutations
+обязателен разрешённый Origin. Заголовки клиента не назначают identity.

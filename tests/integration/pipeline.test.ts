@@ -485,3 +485,87 @@ it('does not pass matched pixels when links are broken or coverage is incomplete
     expect((await repository.getRun(id))?.verdict).toBe(verdict);
   }
 });
+
+it('enforces session ownership for reports, artifacts and mutations, including logout and expiry', async () => {
+  worker = await startWorker(pool, storage, origin);
+  const captured = await waitForRun((await post()).json().id);
+  const owner = '00000000-0000-4000-8000-000000000002';
+  const stranger = randomUUID();
+  await pool.query('INSERT INTO rc_users (id, display_name) VALUES ($1, $2)', [
+    stranger,
+    'Other user',
+  ]);
+  const ownerToken = await repository.createSession(owner);
+  const foreignToken = await repository.createSession(stranger);
+  const secureApp = buildApp(repository, storage, origin, false, 'session');
+  const read = (url: string, token = ownerToken) =>
+    secureApp.inject({ url, headers: { cookie: `rc_session=${token}` } });
+  try {
+    expect((await secureApp.inject('/api/projects')).statusCode).toBe(401);
+    expect((await read('/api/projects', 'forged')).statusCode).toBe(401);
+    expect((await read('/api/projects', foreignToken)).json()).toEqual([]);
+    for (const url of [
+      `/api/projects/${DEMO_PROJECT_ID}`,
+      `/api/projects/${DEMO_PROJECT_ID}/runs`,
+      `/api/runs/${captured.id}`,
+      `/api/runs/${captured.id}/baseline`,
+      `/api/artifacts/${captured.capture!.artifactId}`,
+    ]) {
+      expect((await read(url)).statusCode).toBe(200);
+      expect((await read(url, foreignToken)).statusCode).toBe(404);
+    }
+    const payload = { expectedVersion: 1, maxDiffBasisPoints: 20 };
+    const url = `/api/projects/${DEMO_PROJECT_ID}`;
+    expect(
+      (
+        await secureApp.inject({
+          method: 'PATCH',
+          url,
+          payload,
+          headers: { cookie: `rc_session=${ownerToken}` },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await secureApp.inject({
+          method: 'PATCH',
+          url,
+          payload,
+          headers: { cookie: `rc_session=${foreignToken}`, origin: 'http://127.0.0.1:5173' },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await secureApp.inject({
+          method: 'PATCH',
+          url,
+          payload,
+          headers: { cookie: `rc_session=${ownerToken}`, origin: 'http://127.0.0.1:5173' },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const stored = await pool.query('SELECT token_hash FROM rc_sessions WHERE user_id = $1', [
+      owner,
+    ]);
+    expect(stored.rows.some((row) => row.token_hash === ownerToken)).toBe(false);
+    const logout = await secureApp.inject({
+      method: 'POST',
+      url: '/api/auth/logout',
+      headers: { cookie: `rc_session=${ownerToken}`, origin: 'http://127.0.0.1:5173' },
+    });
+    expect(logout.statusCode).toBe(200);
+    expect(logout.headers['set-cookie']).toContain('Max-Age=0');
+    expect((await read('/api/auth/session')).statusCode).toBe(401);
+    await pool.query(
+      "UPDATE rc_sessions SET expires_at = clock_timestamp() - interval '1 second' WHERE user_id = $1",
+      [stranger],
+    );
+    expect((await read('/api/auth/session', foreignToken)).statusCode).toBe(401);
+  } finally {
+    await secureApp.close();
+    await pool.query('DELETE FROM rc_sessions');
+    await pool.query('DELETE FROM rc_users WHERE id = $1', [stranger]);
+  }
+});

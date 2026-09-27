@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { installAccess, type AccessMode } from './access.js';
 import { startRecovery } from './recovery.js';
 import {
   updateProjectSchema,
@@ -16,6 +17,7 @@ export function buildApp(
   storage: LocalStorage,
   fixtureOrigin: string,
   logger = false,
+  accessMode: AccessMode = 'local',
 ) {
   const app = Fastify({ logger, bodyLimit: 8192 });
   let stopRecovery: (() => Promise<void>) | undefined;
@@ -41,6 +43,7 @@ export function buildApp(
       });
     }
   });
+  installAccess(app, repository, accessMode);
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof Conflict)
       return reply.code(409).send({
@@ -74,7 +77,11 @@ export function buildApp(
     });
   });
   app.get('/api/health', async () => ({ status: 'ok', mode: 'local-demo' }));
-  app.get('/api/projects', async () => [await repository.getProject()]);
+  app.get('/api/projects', async (request) =>
+    (await repository.ownsResource(request.userId!, 'projects', DEMO_PROJECT_ID))
+      ? [await repository.getProject()]
+      : [],
+  );
   app.get('/api/projects/:id', async (request, reply) => {
     if ((request.params as { id: string }).id !== DEMO_PROJECT_ID)
       return reply
@@ -155,7 +162,7 @@ export function buildApp(
         message: 'Provide a run ID and expected baseline version.',
         requestId: request.id,
       });
-    return repository.approveBaseline(input.data);
+    return repository.approveBaseline(input.data, request.userId!);
   });
   app.get('/api/artifacts/:id', async (request, reply) => {
     const id = runIdSchema.safeParse((request.params as { id: string }).id);
