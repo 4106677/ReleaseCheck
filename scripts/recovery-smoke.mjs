@@ -52,7 +52,7 @@ try {
           ...failed,
           id: retriedId,
           status: 'queued',
-          attempt: 0,
+          attempt: 1,
           finishedAt: null,
           error: null,
         },
@@ -78,6 +78,11 @@ try {
   await report.getByRole('button', { name: 'Retry check', exact: true }).click();
   await page.locator(`section[data-run-id="${retriedId}"]`).waitFor();
   assert.equal(new URL(page.url()).pathname, `/runs/${retriedId}`);
+  await page
+    .getByText('A temporary execution error occurred. Waiting for the next automatic attempt…', {
+      exact: true,
+    })
+    .waitFor();
   assert.equal(submissions.length, 2);
   assert.deepEqual(submissions[0].body, { variant: 'regression', viewport: 'mobile' }); // Select defaults to original.
   assert.deepEqual(submissions[1], submissions[0]); // Ambiguous retry keeps its key.

@@ -251,3 +251,13 @@ GET fallback не выполняется: 405/501, redirect или network timeo
 `capture.links` содержит results, skipped и truncated; null в старых captures.
 Лимит или unverified не позволяют pass, broken link требует attention. Пропущенные
 внешние/неподдерживаемые ссылки явно исключены из обещанного покрытия.
+
+## Обычные повторные попытки
+
+При временном сбое executor/storage Run возвращается в queued между попытками.
+Graphile сохраняет собственный backoff; domain attempt остаётся видимым в отчёте.
+Следующий claim устанавливает свежий deadline. После третьей ошибки Run failed
+с CAPTURE_INFRASTRUCTURE_FAILED. Ошибки NAVIGATION_FAILED/CAPTURE_FAILED не
+повторяются автоматически. Hard crash по-прежнему обрабатывается recovery deadline.
+Тесты используют внедрённый executor для детерминированных сбоев, настоящую очередь
+и настоящий child runner для успешной попытки. Новая миграция не требуется.

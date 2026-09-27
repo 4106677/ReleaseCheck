@@ -311,7 +311,9 @@ function Report({
       {!isTerminal(run.status) && (
         <p role="status" className="rc-notice">
           {run.status === 'queued'
-            ? 'Waiting for the worker…'
+            ? run.attempt > 0
+              ? 'A temporary execution error occurred. Waiting for the next automatic attempt…'
+              : 'Waiting for the worker…'
             : 'Capturing the page and comparing its appearance…'}
         </p>
       )}

@@ -263,6 +263,20 @@ export class Repository {
     });
   }
 
+  async awaitRetry(id: string, attempt: number) {
+    await this.db
+      .update(runs)
+      .set({ status: 'queued', attemptDeadline: null })
+      .where(
+        and(
+          eq(runs.id, id),
+          eq(runs.attempt, attempt),
+          eq(runs.status, 'running'),
+          sql`${runs.attemptDeadline} > clock_timestamp()`,
+        ),
+      );
+  }
+
   async fail(id: string, attempt: number, error: string) {
     await this.db
       .update(runs)
