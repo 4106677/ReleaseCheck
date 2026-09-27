@@ -48,6 +48,29 @@ export class Repository {
     this.db = drizzle(pool);
   }
 
+  async beginOAuth() {
+    const state = randomBytes(32).toString('hex');
+    const browser = randomBytes(32).toString('hex');
+    const verifier = randomBytes(32).toString('base64url');
+    const hash = (value: string) => createHash('sha256').update(value).digest('hex');
+    await this.pool.query('DELETE FROM rc_oauth_states WHERE expires_at <= clock_timestamp()');
+    await this.pool.query(
+      "INSERT INTO rc_oauth_states VALUES ($1, $2, $3, clock_timestamp() + interval '10 minutes')",
+      [hash(state), hash(browser), verifier],
+    );
+    return { state, browser, challenge: createHash('sha256').update(verifier).digest('base64url') };
+  }
+
+  async consumeOAuth(state: string, browser: string) {
+    if (!/^[a-f0-9]{64}$/.test(state) || !/^[a-f0-9]{64}$/.test(browser)) return null;
+    const hash = (value: string) => createHash('sha256').update(value).digest('hex');
+    const result = await this.pool.query<{ verifier: string }>(
+      'DELETE FROM rc_oauth_states WHERE state_hash = $1 AND browser_hash = $2 AND expires_at > clock_timestamp() RETURNING verifier',
+      [hash(state), hash(browser)],
+    );
+    return result.rows[0]?.verifier ?? null;
+  }
+
   async createSession(userId: string) {
     const token = randomBytes(32).toString('hex');
     const hash = createHash('sha256').update(token).digest('hex');

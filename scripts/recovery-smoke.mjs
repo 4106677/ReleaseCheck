@@ -29,7 +29,9 @@ try {
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    if (request.method() === 'POST' && path.endsWith('/runs')) {
+    if (path === '/api/auth/session') {
+      await route.fulfill({ json: { userId: 'local', mode: 'local' } });
+    } else if (request.method() === 'POST' && path.endsWith('/runs')) {
       submissions.push({ body: request.postDataJSON(), key: request.headers()['idempotency-key'] });
       if (submissions.length === 1) {
         await route.fulfill({

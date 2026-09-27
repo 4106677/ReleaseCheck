@@ -10,12 +10,12 @@ declare module 'fastify' {
   }
 }
 
-function sessionToken(cookie: string | undefined) {
+export function cookieValue(cookie: string | undefined, name: string) {
   const values = (cookie ?? '')
     .split(';')
     .map((part) => part.trim())
-    .filter((part) => part.startsWith('rc_session='));
-  return values.length === 1 ? values[0]!.slice('rc_session='.length) : '';
+    .filter((part) => part.startsWith(`${name}=`));
+  return values.length === 1 ? values[0]!.slice(name.length + 1) : '';
 }
 
 export function installAccess(app: FastifyInstance, repository: Repository, mode: AccessMode) {
@@ -23,11 +23,16 @@ export function installAccess(app: FastifyInstance, repository: Repository, mode
   app.addHook('onRequest', async (request, reply) => {
     reply.header('Cache-Control', 'private, no-store');
     const path = request.url.split('?')[0]!;
-    if (path === '/api/health') return;
+    if (
+      path === '/api/health' ||
+      path === '/api/auth/github' ||
+      path === '/api/auth/github/callback'
+    )
+      return;
     const user =
       mode === 'local'
         ? { id: LOCAL_USER_ID, displayName: 'Local developer' }
-        : await repository.sessionUser(sessionToken(request.headers.cookie));
+        : await repository.sessionUser(cookieValue(request.headers.cookie, 'rc_session'));
     if (!user)
       return reply
         .code(401)
@@ -63,7 +68,8 @@ export function installAccess(app: FastifyInstance, repository: Repository, mode
   });
   app.get('/api/auth/session', async (request) => ({ userId: request.userId, mode }));
   app.post('/api/auth/logout', async (request, reply) => {
-    if (mode === 'session') await repository.revokeSession(sessionToken(request.headers.cookie));
+    if (mode === 'session')
+      await repository.revokeSession(cookieValue(request.headers.cookie, 'rc_session'));
     reply.header('Set-Cookie', 'rc_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
     return { ok: true };
   });

@@ -52,6 +52,7 @@ jobs:
                curl --fail --silent http://127.0.0.1:4174/ > /dev/null; then
               npm run test:smoke
               npm run test:recovery-ui
+          npm run test:auth-ui
               npm run test:design
               exit 0
             fi

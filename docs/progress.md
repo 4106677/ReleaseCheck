@@ -1,5 +1,27 @@
 # Состояние проекта
 
+## 27 сентября 2026 — GitHub OAuth и экран входа
+
+- Реализован owner-only OAuth flow с state, PKCE S256 и browser binding.
+  Одноразовый state хранится в PostgreSQL (миграция 007), срок — 10 минут.
+- GitHub ID проверяется по GITHUB_OWNER_ID; существующий demo не переходит
+  первому вошедшему. Это доступ к одному workspace, не multi-user SaaS.
+- Token exchange и проверка /user происходят только на сервере; GitHub token
+  не сохраняется. Session cookie HttpOnly/SameSite=Lax, logout отзывает сессию.
+- Экран входа, недоступный API, ошибка callback, выход и ошибка выхода проверены
+  браузером; compact-карточка в выбранном стиле утверждена пользователем.
+- Main поддерживает AUTH_MODE=session с обязательной конфигурацией. По умолчанию
+  local, production по-прежнему запрещён. Logger не пишет OAuth query parameters.
+
+Проверки: 34 unit + 24 integration, сборка/типы/lint. Provider exchange проверен
+с подменённым fetch; callback с тестовым identity resolver и настоящей БД.
+Auth UI smoke добавлен в CI; full baseline/navigation и Recovery UI проверены.
+Реальный GitHub-вход не проверен: OAuth App credentials пока не настроены.
+
+Ветка `codex/github-login`, поверх `codex/session-access` (PR #11, CI прошёл).
+Следующий шаг: пользователь настраивает OAuth App по github-login.md; независимо
+можно продолжать подготовку изоляции runner и конфигурации среды для публикации.
+
 ## 27 сентября 2026 — серверные сессии и граница доступа
 
 - Миграция 006 добавляет users, sessions и owner_id. Старый demo принадлежит
