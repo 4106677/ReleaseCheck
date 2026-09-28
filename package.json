@@ -32,7 +32,9 @@
     "dev:fixture": "node --env-file-if-exists=.env fixtures/demo-site/dist/main.js",
     "dev:web": "npm run dev -w @releasecheck/web",
     "test:recovery-ui": "node --env-file-if-exists=.env scripts/recovery-smoke.mjs",
-    "test:auth-ui": "node --env-file-if-exists=.env scripts/auth-smoke.mjs"
+    "test:auth-ui": "node --env-file-if-exists=.env scripts/auth-smoke.mjs",
+    "runner:build": "docker build -f docker/runner.Dockerfile -t releasecheck-runner:local .",
+    "test:container": "node scripts/container-smoke.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

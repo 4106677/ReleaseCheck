@@ -1,0 +1,16 @@
+**
+!package.json
+!package-lock.json
+!tsconfig.base.json
+!apps/
+!apps/*/
+!apps/*/package.json
+!packages/
+!packages/**
+!fixtures/
+!fixtures/**
+!docker/
+!docker/**
+**/node_modules
+**/dist
+**/.env*

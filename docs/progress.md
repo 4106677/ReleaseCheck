@@ -1,5 +1,21 @@
 # Состояние проекта
 
+## 28 сентября 2026 — контейнерный образ controlled runner
+
+- Собран отдельный Node 24 + Chromium image с fixture внутри. Build context
+  исключает `.env`, `.env.local`, git и локальные артефакты.
+- Проверены network=none, read-only root, UID 1000, пустые capabilities,
+  отсутствие host mounts/Docker socket/credentials, CPU/RAM/PID limits.
+- Chromium sandbox включён; seccomp основан на профиле Playwright с разрешением
+  chroot для sandbox внутри user namespace без capabilities внешнего контейнера.
+- Настоящие desktop/mobile captures: baseline → matched repeat → changed regression,
+  browser findings и broken link. Проверен cleanup контейнера после attach timeout.
+- Добавлен отдельный Linux CI job. Это образ и test harness; очередь пока не
+  переключена. Следующий этап — lifecycle по container ID и crash reconciliation.
+
+Локальные проверки: build/TypeScript/lint, 38 unit; container smoke на Linux ARM64.
+Ветка `codex/runner-container-image`, поверх PR #14.
+
 ## 28 сентября 2026 — подключена локальная OAuth-конфигурация
 
 Пользователь сохранил OAuth credentials в игнорируемом `.env.local`. API теперь
