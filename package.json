@@ -27,7 +27,7 @@
     "check": "npm run typecheck && npm run lint && npm test",
     "db:migrate": "node --env-file-if-exists=.env packages/db/dist/migrate-cli.js",
     "dev": "npm run build && concurrently --kill-others --names api,worker,fixture,web \"npm run dev:api\" \"npm run dev:worker\" \"npm run dev:fixture\" \"npm run dev:web\"",
-    "dev:api": "node --env-file-if-exists=.env apps/api/dist/main.js",
+    "dev:api": "node --env-file-if-exists=.env --env-file-if-exists=.env.local apps/api/dist/main.js",
     "dev:worker": "node --env-file-if-exists=.env apps/worker/dist/main.js",
     "dev:fixture": "node --env-file-if-exists=.env fixtures/demo-site/dist/main.js",
     "dev:web": "npm run dev -w @releasecheck/web",
