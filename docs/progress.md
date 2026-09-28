@@ -1,5 +1,28 @@
 # Состояние проекта
 
+## 28 сентября 2026 — завершение runner и Chromium
+
+- Исправлен риск orphan Chromium: supervisor отслеживает browser process group
+  через приватный IPC от доверенного runner и завершает её при timeout, output
+  overflow или аварийном выходе Node, до ожидания закрытия унаследованных pipes.
+- Chromium запускается через launchServer/connect с включённым sandbox и endpoint
+  только на 127.0.0.1. После штатного server.close runner снимает регистрацию PID.
+- При потере IPC с worker runner закрывает зарегистрированный браузер; если связь
+  потеряна во время запуска, callback прерывает capture с finally cleanup.
+- Лимит stdout считается в bytes, stderr не попадает в исключения. Malformed JSON,
+  неуспешный exit и timeout имеют стабильные коды. Среда runner без credentials.
+- Этот supervisor поддерживает POSIX (macOS/Linux), Windows явно отклонён.
+  Это управление процессами, не контейнерная изоляция. Внешние URL закрыты.
+
+Проверки: 38 unit + 24 integration, build/TypeScript/lint. Настоящие detached
+процессы проверяют timeout, byte overflow и exit с удерживаемыми pipes. Chromium
+captures, queue retries, baseline и link checks проходят с новым способом запуска.
+Browser smoke проверяет полный desktop/mobile цикл.
+
+Ветка `codex/runner-process-lifecycle`, поверх `codex/github-login` (PR #12).
+Следующий этап: контейнерная среда с отдельными ресурсными/сетевыми ограничениями,
+затем конфигурация публикации. Требования и ограничения — runner-isolation.md.
+
 ## 27 сентября 2026 — GitHub OAuth и экран входа
 
 - Реализован owner-only OAuth flow с state, PKCE S256 и browser binding.

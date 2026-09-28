@@ -283,3 +283,13 @@ owner_id не имеет default: владелец должен быть ука�
 Owner-only callback и экран входа добавлены. Настройка AUTH_MODE=session и актуальные
 границы описаны в [github-login.md](github-login.md). Local-mode остаётся default;
 реальный вход требует OAuth App, публичный NODE_ENV=production по-прежнему закрыт.
+
+## Жизненный цикл runner
+
+Worker запускает доверенный runner с IPC и ограниченным env. BrowserServer
+слушает только 127.0.0.1; PID browser group регистрируется у supervisor перед
+capture. При лимите 60 секунд/6 MiB stdout или аварийном exit supervisor завершает
+зарегистрированную browser group и Node. Лимит считается в bytes, stderr не
+публикуется в исключении. На штатном пути BrowserServer закрывается через finally.
+Поддерживаются POSIX macOS/Linux. Этот механизм не является сетевой/файловой
+изоляцией и не снимает запрет production или произвольных URL.
