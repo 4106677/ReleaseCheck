@@ -25,6 +25,12 @@ host от произвольного кода. Runner пока имеет дос
 
 Следующая законченная граница для controlled demo:
 
+Образ и отдельный проверочный harness реализованы в [docker/README.md](../docker/README.md).
+Они проверяют network=none, read-only root, UID 1000, отсутствие capabilities,
+лимиты CPU/RAM/PID, шесть desktop/mobile captures и cleanup после timeout.
+Рабочая очередь пока использует прежний process supervisor. Пункты 3–4 ниже
+в части worker crash и полного пути через БД остаются открытыми.
+
 1. Одноразовый runner container, fixture внутри той же изолированной среды;
    network=none, без доступа к DB/API/storage, Docker socket и host mounts.
 2. Непривилегированный UID, read-only root, ограниченный tmpfs для профиля браузера,
