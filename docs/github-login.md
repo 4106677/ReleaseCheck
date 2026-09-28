@@ -11,7 +11,7 @@
 1. В GitHub Settings → Developer settings → OAuth Apps зарегистрировать приложение.
    Homepage URL: `http://127.0.0.1:5173`.
    Authorization callback URL: `http://127.0.0.1:5173/api/auth/github/callback`.
-2. В игнорируемом `.env` указать `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`,
+2. В игнорируемом `.env.local` указать `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`,
    `GITHUB_OWNER_ID` (числовой ID, не login), `APP_ORIGIN=http://127.0.0.1:5173`.
    ID своего авторизованного аккаунта можно получить через `gh api user --jq .id`.
    Secret не отправлять в чат и не коммитить.
@@ -21,8 +21,12 @@
    повторный вход. Проверить отказ для другого GitHub-аккаунта.
 
 Без OAuth credentials оставить `AUTH_MODE=local`: существующее демо работает.
-Session-mode отказывается стартовать при неполной конфигурации. Реальные credentials
-не были предоставлены; end-to-end вход через живой GitHub пока не подтверждён.
+API читает `.env`, затем `.env.local` с приоритетом локальных значений. Worker
+и fixture не загружают `.env.local`, чтобы не получать OAuth credentials.
+Session-mode отказывается стартовать при неполной конфигурации. 28 сентября 2026
+credentials настроены локально: пользователь прошёл вход через живой GitHub,
+подтверждены Owner session, загрузка истории проверок и активная сессия в БД.
+Реальные logout/re-login и отказ другому аккаунту ещё не проверены вручную.
 
 ## Реализация
 
