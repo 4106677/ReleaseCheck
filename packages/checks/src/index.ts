@@ -61,7 +61,10 @@ export const captureOutputSchema = z.discriminatedUnion('ok', [
 ]);
 export type CaptureOutput = z.infer<typeof captureOutputSchema>;
 
-export async function captureFixture(input: CaptureInput): Promise<CaptureOutput> {
+export async function captureFixture(
+  input: CaptureInput,
+  browserStarted?: (pid: number) => Promise<void>,
+): Promise<CaptureOutput> {
   const url = new URL(input.url);
   if (
     url.origin !== input.fixtureOrigin ||
@@ -75,8 +78,15 @@ export async function captureFixture(input: CaptureInput): Promise<CaptureOutput
   }
   // The local fixture exception is not a sandbox for arbitrary websites.
   // Browser launch failures are infrastructure errors and should be retried by the job.
-  const browser = await chromium.launch({ headless: true, chromiumSandbox: true });
+  const server = await chromium.launchServer({
+    headless: true,
+    chromiumSandbox: true,
+    host: '127.0.0.1',
+  });
   try {
+    const pid = server.process().pid;
+    if (pid && browserStarted) await browserStarted(pid);
+    const browser = await chromium.connect(server.wsEndpoint());
     const context = await browser.newContext({
       viewport: { width: input.width, height: input.height },
       deviceScaleFactor: 1,
@@ -203,6 +213,6 @@ export async function captureFixture(input: CaptureInput): Promise<CaptureOutput
       return { ok: false, error: 'CAPTURE_FAILED' };
     }
   } finally {
-    await browser.close();
+    await server.close();
   }
 }
