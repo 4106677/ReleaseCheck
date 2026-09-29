@@ -40,18 +40,47 @@ installations are preserved. Sweeps are bounded to 100 candidates; Docker comman
 have time/output limits. Labels are trusted orchestrator metadata, not page input.
 Run deadline/attempt fencing in PostgreSQL remains the final publication boundary.
 
-After SIGKILL, another worker of this installation or the restarted worker reaps
-expired containers. If **all workers stay down**, there is no independent janitor:
-the entrypoint's 60-second timer is best-effort, not a kernel lifetime guarantee.
-Deployment must keep a reconciler available and alert on sweep failures. Clock
-changes between workers sharing the daemon can affect expiry; use synchronized
+After SIGKILL, another worker, the restarted worker, or the independent janitor
+reaps expired containers. The entrypoint's timer alone is not a kernel lifetime
+guarantee. Clock changes between processes can affect expiry; use synchronized
 hosts. Do not change the owner UUID to fix a failure: that would strand old leases.
+
+## Independent janitor
+
+Create ignored `.env.runner` with **only** `RUNNER_OWNER_ID`, copying the same UUID
+used by this installation's worker. It must use the same Docker context/daemon.
+No database URL, OAuth credentials or runner image configuration is needed.
+
+```sh
+npm run build -w @releasecheck/worker
+npm run runner:reap     # one sweep; nonzero exit on configuration/Docker failure
+npm run runner:janitor  # startup sweep, then every 15 seconds
+```
+
+Run the janitor under an independent deployment supervisor, not in the worker's
+process group or a `concurrently --kill-others` group. Restart it after nonzero
+exit and alert on `container_cleanup_failed` or missing successful sweep events.
+Success emits `container_cleanup_completed` with UTC time; raw Docker errors and
+container output are not logged. SIGTERM/SIGINT interrupt idle waiting and let an
+in-flight bounded sweep finish. A supervisor should allow at least 60 seconds for
+graceful shutdown. Only one sweep runs at a time; worker and janitor tolerate
+concurrent deletion of the same expired ID.
+
+The janitor shares the exact ownership checks with the worker. It preserves
+unexpired leases, other roles/installations and malformed expiry labels. It does
+not touch PostgreSQL jobs, artifacts or baseline approvals. If Docker or the host
+is unavailable, cleanup must wait for recovery; deployment monitoring remains
+required. The janitor still has privileged Docker access and belongs only on the
+trusted orchestration host, never in a browser container.
 
 With a disposable database ending in `_test`, run `npm run test:container-worker`
 after `npm run build`. It covers queue → capture → baseline/artifact, real attach
 timeout, actual worker SIGKILL, restart cleanup, preserved live/foreign containers,
 domain deadline recovery and a successful subsequent check. The crash test advances
 only the reaper clock to avoid waiting 90 seconds; it uses real Docker containers.
+An additional test starts the independent daemon without DB/image configuration,
+checks startup and periodic cleanup of real expired containers, preserved live/
+foreign/malformed leases, graceful stop, and failure with missing ownership.
 
 ## Image smoke
 
