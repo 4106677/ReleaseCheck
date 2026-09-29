@@ -34,7 +34,8 @@
     "test:recovery-ui": "node --env-file-if-exists=.env scripts/recovery-smoke.mjs",
     "test:auth-ui": "node --env-file-if-exists=.env scripts/auth-smoke.mjs",
     "runner:build": "docker build -f docker/runner.Dockerfile -t releasecheck-runner:local .",
-    "test:container": "node scripts/container-smoke.mjs"
+    "test:container": "node scripts/container-smoke.mjs",
+    "test:container-worker": "vitest run --project container"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

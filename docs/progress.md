@@ -1,5 +1,26 @@
 # Состояние проекта
 
+## 29 сентября 2026 — контейнерный backend очереди и crash cleanup
+
+- Worker поддерживает `RUNNER_BACKEND=docker`; образ фиксируется по local image ID.
+  Отсутствующий Docker/image останавливает запуск без fallback в process backend.
+- Каждая попытка создаёт контейнер с постоянным UUID установки и expiry 90 секунд.
+  Attach ограничен 60 секундами и 6 MiB; cleanup выполняется по проверенному ID.
+- Startup/15-second reconciler убирает только просроченные контейнеры своей установки.
+  Живые проверки и другие установки не затрагиваются. DB fencing остаётся независимым.
+- Добавлены реальные тесты: очередь → baseline → repeat → regression → PNG,
+  timeout зависшего контейнера, SIGKILL worker, restart cleanup и новый успешный Run.
+  Для проверки expiry тест двигает только часы reconciler, не Docker/БД.
+- Ограничение deployment: если все worker выключены, независимого janitor ещё нет.
+  Нужны supervision/мониторинг; production и произвольные URL остаются закрытыми.
+
+Проверки: build/TypeScript/lint, 38 unit + 24 integration + 3 container tests.
+Локальный dev worker переключён на Docker. Из интерфейса под Owner session
+успешно завершён Run `b0239a6f-f695-4669-adcf-bab22a50854f`; PNG и link check доступны.
+Baseline Linux пока не одобрен: профиль отличается от сохранённых macOS captures.
+
+Ветка `codex/container-worker-lifecycle`, поверх PR #15.
+
 ## 28 сентября 2026 — контейнерный образ controlled runner
 
 - Собран отдельный Node 24 + Chromium image с fixture внутри. Build context
