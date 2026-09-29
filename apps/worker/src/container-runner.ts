@@ -47,29 +47,11 @@ interface ContainerInfo {
   Config: { Labels: Record<string, string> | null };
 }
 
-export class ContainerRunner {
-  private timer: ReturnType<typeof setInterval> | undefined;
-  private reconciliation: Promise<void> | undefined;
-  private stopped = false;
+export class ContainerReconciler {
+  protected reconciliation: Promise<void> | undefined;
 
-  private constructor(
-    private readonly owner: string,
-    private readonly image: string,
-  ) {}
-
-  static async create(owner: string, image = 'releasecheck-runner:local') {
+  constructor(protected readonly owner: string) {
     if (!uuid.test(owner)) throw new Error('RUNNER_OWNER_ID must be a stable installation UUID');
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9._/@:-]{0,255}$/.test(image))
-      throw new Error('Invalid runner image');
-    const resolved = (await docker(['image', 'inspect', '--format', '{{.Id}}', image])).trim();
-    if (!imageId.test(resolved)) throw new Error('CONTAINER_IMAGE_INVALID');
-    const runner = new ContainerRunner(owner, resolved);
-    await runner.reconcile();
-    runner.timer = setInterval(() => {
-      void runner.reconcile().catch(() => console.error('Container reconciliation failed'));
-    }, 15_000);
-    runner.timer.unref();
-    return runner;
   }
 
   // Installation labels survive worker crashes. Never delete another installation
@@ -112,7 +94,7 @@ export class ContainerRunner {
     }
   }
 
-  private async inspectOwned(id: string): Promise<ContainerInfo | undefined> {
+  protected async inspectOwned(id: string): Promise<ContainerInfo | undefined> {
     // `ps` avoids treating a concurrent successful removal as a Docker failure.
     const found = (
       await docker(['ps', '--all', '--quiet', '--no-trunc', '--filter', `id=${id}`])
@@ -135,7 +117,7 @@ export class ContainerRunner {
     return info;
   }
 
-  private async removeOwned(id: string) {
+  protected async removeOwned(id: string) {
     if (await this.inspectOwned(id)) {
       try {
         await docker(['rm', '--force', id]);
@@ -143,6 +125,33 @@ export class ContainerRunner {
         if ((await docker(['ps', '--all', '--quiet', '--filter', `id=${id}`])).trim()) throw error;
       }
     }
+  }
+}
+
+export class ContainerRunner extends ContainerReconciler {
+  private timer: ReturnType<typeof setInterval> | undefined;
+  private stopped = false;
+
+  private constructor(
+    owner: string,
+    private readonly image: string,
+  ) {
+    super(owner);
+  }
+
+  static async create(owner: string, image = 'releasecheck-runner:local') {
+    if (!uuid.test(owner)) throw new Error('RUNNER_OWNER_ID must be a stable installation UUID');
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._/@:-]{0,255}$/.test(image))
+      throw new Error('Invalid runner image');
+    const resolved = (await docker(['image', 'inspect', '--format', '{{.Id}}', image])).trim();
+    if (!imageId.test(resolved)) throw new Error('CONTAINER_IMAGE_INVALID');
+    const runner = new ContainerRunner(owner, resolved);
+    await runner.reconcile();
+    runner.timer = setInterval(() => {
+      void runner.reconcile().catch(() => console.error('Container reconciliation failed'));
+    }, 15_000);
+    runner.timer.unref();
+    return runner;
   }
 
   async execute(input: CaptureInput) {

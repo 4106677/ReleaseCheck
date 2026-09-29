@@ -40,7 +40,7 @@
 - [ ] Добавить GitHub login, сессии и проверки владельца ресурсов.
       Owner-only OAuth, сессии, callback и UI реализованы; реальный вход владельца подтверждён. Multi-user проекты пока не реализованы.
 - [ ] Реализовать изоляцию runner / egress для планируемой среды.
-      Docker backend очереди и restart crash reconciliation реализованы. Для deployment нужны supervision и мониторинг; независимого janitor при выключенных worker пока нет.
+      Docker backend, restart reconciliation и независимый janitor реализованы. Для выбранного deployment ещё нужны supervision и мониторинг.
 - [x] Защитить принятие baseline от конфликтов и сохранить историю решений (локальный автор).
 - [x] Настроить CI для полного сквозного сценария.
 

@@ -35,7 +35,9 @@
     "test:auth-ui": "node --env-file-if-exists=.env scripts/auth-smoke.mjs",
     "runner:build": "docker build -f docker/runner.Dockerfile -t releasecheck-runner:local .",
     "test:container": "node scripts/container-smoke.mjs",
-    "test:container-worker": "vitest run --project container"
+    "test:container-worker": "vitest run --project container",
+    "runner:reap": "node --env-file-if-exists=.env.runner apps/worker/dist/janitor-main.js --once",
+    "runner:janitor": "node --env-file-if-exists=.env.runner apps/worker/dist/janitor-main.js"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

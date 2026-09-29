@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { createPool, Repository, migrate } from '@releasecheck/db';
 import { LocalStorage } from '@releasecheck/storage';
@@ -156,6 +157,88 @@ it('bounds a stalled container to 60 seconds and removes it after attach timeout
   containers = await ContainerRunner.create(owner, hangImage);
   await expect(containers.execute(request)).rejects.toThrow('CONTAINER_TIMEOUT');
   expect(await owned()).toEqual([]);
+});
+
+it('runs an independent janitor without DB/image configuration and preserves unrelated containers', async () => {
+  const ids: string[] = [];
+  for (const [installation, expires, role] of [
+    [owner, String(Date.now() - 1000), 'capture'],
+    [owner, String(Date.now() - 1000), 'capture'],
+    [owner, String(Date.now() + 600_000), 'capture'],
+    [randomUUID(), String(Date.now() - 1000), 'capture'],
+    [owner, 'invalid', 'capture'],
+    [owner, String(Date.now() - 1000), 'another-service'],
+  ]) {
+    ids.push(
+      (
+        await docker([
+          'create',
+          '--network=none',
+          '--label',
+          `io.releasecheck.role=${role}`,
+          '--label',
+          `io.releasecheck.owner=${installation}`,
+          '--label',
+          `io.releasecheck.expires-at=${expires}`,
+          hangImage,
+        ])
+      ).trim(),
+    );
+  }
+  extraIds.push(ids[3]!); // Foreign test fixture is not returned by owned().
+  await docker(['start', ids[0]!, ids[2]!]);
+  const env: NodeJS.ProcessEnv = {
+    RUNNER_OWNER_ID: owner,
+    RUNNER_IMAGE: 'deliberately-missing-image',
+  };
+  for (const key of [
+    'PATH',
+    'HOME',
+    'DOCKER_HOST',
+    'DOCKER_CONTEXT',
+    'DOCKER_CONFIG',
+    'DOCKER_TLS_VERIFY',
+    'DOCKER_CERT_PATH',
+    'XDG_RUNTIME_DIR',
+  ])
+    if (process.env[key]) env[key] = process.env[key];
+  const entry = new URL('../../apps/worker/dist/janitor-main.js', import.meta.url);
+  // The daemon cleans on startup, then remains alive without a worker or DB.
+  child = fork(entry, [], { execArgv: [], stdio: ['ignore', 'ignore', 'ignore', 'ipc'], env });
+  await waitFor(owned, (remaining) => !remaining.includes(ids[0]!) && !remaining.includes(ids[1]!));
+  expect(child.exitCode).toBeNull();
+  for (const id of ids.slice(2))
+    expect((await docker(['inspect', '--format', '{{.Id}}', id])).trim()).toBe(id);
+  // Also exercise the next sweep, not only the startup path.
+  const expiredLater = (
+    await docker([
+      'create',
+      '--network=none',
+      '--label',
+      'io.releasecheck.role=capture',
+      '--label',
+      `io.releasecheck.owner=${owner}`,
+      '--label',
+      `io.releasecheck.expires-at=${Date.now() - 1000}`,
+      hangImage,
+    ])
+  ).trim();
+  await waitFor(owned, (remaining) => !remaining.includes(expiredLater));
+  const exited = once(child, 'exit');
+  child.kill('SIGTERM');
+  expect((await exited)[0]).toBe(0);
+  child = undefined;
+  // Missing ownership fails closed, with a stable event and nonzero exit status.
+  const result = await new Promise<{ code: number; stderr: string }>((resolve) => {
+    execFile(
+      process.execPath,
+        [fileURLToPath(entry), '--once'],
+      { env: { PATH: process.env.PATH }, timeout: 10_000 },
+      (error, _stdout, stderr) => resolve({ code: Number(error?.code ?? 0), stderr }),
+    );
+  });
+  expect(result.code).toBe(1);
+  expect(JSON.parse(result.stderr)).toEqual({ event: 'container_cleanup_failed' });
 });
 
 it('reconciles a killed worker container on restart without touching live or foreign ownership', async () => {

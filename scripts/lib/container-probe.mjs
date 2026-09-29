@@ -22,8 +22,8 @@ async function removeProbe(name) {
     throw new Error('Probe container cleanup failed');
 }
 
-// Test harness only: the worker needs durable ownership and crash reconciliation
-// before it can use this container boundary in production.
+// Image test harness only. Queue lifecycle and ownership reconciliation live in
+// apps/worker/src/container-runner.ts and are tested separately.
 export async function probeContainer({ input = '', command, inspect, timeout } = {}) {
   const name = `releasecheck-probe-${randomUUID()}`;
   try {

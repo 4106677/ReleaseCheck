@@ -1,6 +1,6 @@
 # Runner: текущая граница и требования среды
 
-28 сентября 2026. Worker поддерживает `process` для локальной разработки и `docker`
+29 сентября 2026. Worker поддерживает `process` для локальной разработки и `docker`
 для controlled fixture. Оба сохраняют ограждение публикации по attempt/deadline,
 retry и recovery. Production запуск по-прежнему запрещён.
 
@@ -16,9 +16,10 @@ retry и recovery. Production запуск по-прежнему запрещё�
   Ограничены stdin/stdout, время и объём ответа Docker CLI; наружу идут стабильные коды.
 - Срок жизни 90 секунд и постоянный UUID установки записаны в labels. На старте и
   каждые 15 секунд worker удаляет только просроченные контейнеры своей установки.
-- После SIGKILL cleanup выполняет другой или перезапущенный worker. Если все worker
-  остаются выключены, отдельного janitor нет: внутренний timer контейнера не даёт
-  kernel guarantee. Для deployment нужен доступный reconciler и мониторинг ошибок.
+- После SIGKILL cleanup выполняет другой/перезапущенный worker или независимый janitor.
+  Janitor запускается отдельно, не требует БД/образа и использует тот же owner UUID.
+  Для deployment нужны независимый supervisor и мониторинг: недоступность Docker/host
+  всё ещё откладывает очистку до восстановления.
 - Проверки включают настоящий pipeline с PostgreSQL и артефактами, attach timeout,
   SIGKILL worker, restart cleanup, сохранение live/foreign containers и новый Run.
 

@@ -1,5 +1,22 @@
 # Состояние проекта
 
+## 29 сентября 2026 — независимая очистка контейнеров
+
+- Общая ownership/expiry-проверка выделена в ContainerReconciler. Worker и отдельный
+  janitor используют одну реализацию и допускают конкурентное удаление expired ID.
+- Добавлены `runner:reap` (один проход) и `runner:janitor` (каждые 15 секунд).
+  Janitor не требует БД, GitHub-секретов или доступного runner image; конфигурация
+  содержит только UUID установки и обычное окружение Docker client.
+- SIGTERM завершает ожидание, ошибки дают стабильное событие и ненулевой exit.
+  Для deployment остаются supervisor/restart policy и мониторинг доступности.
+- Реальный тест без worker проверяет startup и периодическую очистку, сохранение
+  live/foreign/malformed leases, graceful stop и отказ без owner UUID.
+- Локально создан игнорируемый `.env.runner`; janitor запущен независимо от dev-стека.
+
+Проверки: build/TypeScript/lint, 38 unit и 4 container tests. Новый тест использует
+реальные Docker containers и ждёт настоящий периодический проход.
+Ветка `codex/independent-container-janitor`, поверх PR #16.
+
 ## 29 сентября 2026 — контейнерный backend очереди и crash cleanup
 
 - Worker поддерживает `RUNNER_BACKEND=docker`; образ фиксируется по local image ID.
