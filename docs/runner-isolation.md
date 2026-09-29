@@ -1,47 +1,36 @@
 # Runner: текущая граница и требования среды
 
-28 сентября 2026. Process supervisor завершает Chromium при сбое доверенного
-runner. Это уменьшает риск оставшихся процессов и зависших pipes; не защищает
-host от произвольного кода. Runner пока имеет доступ к файловой системе текущего
-пользователя, а allowlist сетевых запросов браузера не заменяет сетевой namespace.
+28 сентября 2026. Worker поддерживает `process` для локальной разработки и `docker`
+для controlled fixture. Оба сохраняют ограждение публикации по attempt/deadline,
+retry и recovery. Production запуск по-прежнему запрещён.
 
-Реализовано:
+## Docker backend
 
-- Отдельный Node process, runtime-only env без DB/OAuth credentials.
-- Sandbox Chromium включён. BrowserServer websocket привязан к 127.0.0.1.
-- Browser PID регистрируется через IPC; cleanup использует POSIX process group,
-  которую Playwright создаёт для браузера. Штатное закрытие снимает регистрацию.
-- Таймаут 60 секунд, stdout 6 MiB в bytes, стабильные ошибки без сырого stderr.
-- Ограждение публикации по attempt/deadline в БД, retry и recovery.
+Настройка и ограничения: [docker/README.md](../docker/README.md).
 
-Ограничения:
+- Одноразовый контейнер с fixture внутри, network=none, без host mounts и секретов.
+- UID/GID 1000, read-only root, пустые capabilities, no-new-privileges, seccomp,
+  включённая песочница Chromium. CPU/RAM/PID и временные файловые системы ограничены.
+- Образ разрешается в immutable local image ID на старте worker.
+- Create → attach по container ID → remove при успехе, ошибке или таймауте 60 секунд.
+  Ограничены stdin/stdout, время и объём ответа Docker CLI; наружу идут стабильные коды.
+- Срок жизни 90 секунд и постоянный UUID установки записаны в labels. На старте и
+  каждые 15 секунд worker удаляет только просроченные контейнеры своей установки.
+- После SIGKILL cleanup выполняет другой или перезапущенный worker. Если все worker
+  остаются выключены, отдельного janitor нет: внутренний timer контейнера не даёт
+  kernel guarantee. Для deployment нужен доступный reconciler и мониторинг ошибок.
+- Проверки включают настоящий pipeline с PostgreSQL и артефактами, attach timeout,
+  SIGKILL worker, restart cleanup, сохранение live/foreign containers и новый Run.
 
-- IPC доверяет нашему runner. Оно не должно принимать PID от внешнего сервиса
-  или произвольного исполняемого файла.
-- Потеря IPC обрабатывается runner; это не kernel guarantee. Полная авария host
-  или зависание до регистрации browser PID требуют container/cgroup teardown.
-- Нет лимитов CPU/RAM/PID на уровне ядра, отдельного filesystem/network namespace.
-- Windows не поддерживается этим supervisor. CI и планируемый host — Linux.
+Привилегированный Docker socket нельзя монтировать внутрь runner. Доступ worker к
+Docker сам по себе привилегирован и должен быть ограничен средой deployment.
+Для внешних URL потребуется отдельная egress/SSRF policy: network=none подходит
+лишь controlled fixture. Профиль Linux несовместим с прежними baseline macOS.
 
-Следующая законченная граница для controlled demo:
+## Process backend
 
-Образ и отдельный проверочный harness реализованы в [docker/README.md](../docker/README.md).
-Они проверяют network=none, read-only root, UID 1000, отсутствие capabilities,
-лимиты CPU/RAM/PID, шесть desktop/mobile captures и cleanup после timeout.
-Рабочая очередь пока использует прежний process supervisor. Пункты 3–4 ниже
-в части worker crash и полного пути через БД остаются открытыми.
-
-1. Одноразовый runner container, fixture внутри той же изолированной среды;
-   network=none, без доступа к DB/API/storage, Docker socket и host mounts.
-2. Непривилегированный UID, read-only root, ограниченный tmpfs для профиля браузера,
-   лимиты памяти/CPU/PID. Не отключать Chromium sandbox ради запуска.
-3. Parent управляет жизненным циклом по container ID, включая timeout и исчезновение
-   worker; сборщик оставшихся контейнеров должен иметь bounded ownership label.
-4. Проверить невозможность доступа к host/network и секретам, завершение всех
-   процессов, потребление ресурсов и полноценный baseline-цикл на Linux.
-5. Только после этого готовить production origins/HTTPS и публикацию. Для внешних
-   URL потребуется отдельная egress/SSRF policy; network=none подходит лишь fixture.
-
-Привилегированный Docker socket нельзя монтировать внутрь runner. Доступ оркестратора
-к нему сам по себе привилегирован и должен быть ограничен средой deployment.
-Выбор hosting и расходов ещё не сделан; текущий запуск остаётся local-only.
+Отдельный Node process получает runtime-only env без DB/OAuth credentials.
+BrowserServer слушает 127.0.0.1; supervisor завершает зарегистрированную POSIX
+process group Chromium при timeout/overflow/exit. IPC доверяет нашему runner.
+Это не filesystem/network isolation и не лимиты CPU/RAM/PID на уровне ядра.
+Windows не поддерживается этим supervisor; local development — macOS/Linux.
