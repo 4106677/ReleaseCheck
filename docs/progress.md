@@ -8,7 +8,8 @@
   до 1.36 s. Это только runner + fixture; полный стек и VPS ещё не измерены.
 - [План размещения](deployment-sizing.md) содержит воспроизводимую команду,
   ограничения замеров, варианты 4 GB VPS, стоимость и оставшиеся release gates.
-- Сервер не заказан. Для размещения нужны выбор бюджета/провайдера/домена,
+- Владелец предложил домашний Mac mini 2014 с Ubuntu; VPS отложен.
+  Уточняются характеристики и SSH-доступ. Для размещения нужны постоянный HTTPS-адрес,
   HTTPS configuration, supervision, backup/restore и проверка на целевом хосте.
 
 Проверки: build/TypeScript/lint, 38 unit, Docker boundary/capture/timeout smoke;
