@@ -37,7 +37,8 @@
     "test:container": "node scripts/container-smoke.mjs",
     "test:container-worker": "vitest run --project container",
     "runner:reap": "node --env-file-if-exists=.env.runner apps/worker/dist/janitor-main.js --once",
-    "runner:janitor": "node --env-file-if-exists=.env.runner apps/worker/dist/janitor-main.js"
+    "runner:janitor": "node --env-file-if-exists=.env.runner apps/worker/dist/janitor-main.js",
+    "runner:benchmark": "node scripts/benchmark-runner.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

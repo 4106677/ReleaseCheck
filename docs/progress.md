@@ -1,5 +1,20 @@
 # Состояние проекта
 
+## 30 сентября 2026 — измерения runner и смета demo
+
+- Добавлен `runner:benchmark`: 12 настоящих captures в отдельных контейнерах,
+  метрики памяти/CPU из cgroup v2, время capture и полного lifecycle, проверка OOM.
+- Сохранён Linux ARM64 отчёт: максимум 188.4 MiB, capture до 451 ms, lifecycle
+  до 1.36 s. Это только runner + fixture; полный стек и VPS ещё не измерены.
+- [План размещения](deployment-sizing.md) содержит воспроизводимую команду,
+  ограничения замеров, варианты 4 GB VPS, стоимость и оставшиеся release gates.
+- Сервер не заказан. Для размещения нужны выбор бюджета/провайдера/домена,
+  HTTPS configuration, supervision, backup/restore и проверка на целевом хосте.
+
+Проверки: build/TypeScript/lint, 38 unit, Docker boundary/capture/timeout smoke;
+повторный benchmark после восстановления локального Node 24/Docker окружения.
+Ветка `codex/deployment-sizing`, поверх PR #17.
+
 ## 29 сентября 2026 — независимая очистка контейнеров
 
 - Общая ownership/expiry-проверка выделена в ContainerReconciler. Worker и отдельный

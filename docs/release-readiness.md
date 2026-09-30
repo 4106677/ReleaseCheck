@@ -1,6 +1,6 @@
 # До первого публичного выпуска
 
-Обновлено 29 сентября 2026. Рабочий локальный demo flow уже завершён:
+Обновлено 30 сентября 2026. Рабочий локальный demo flow уже завершён:
 реальные captures desktop/mobile, versioned baseline и tolerance, pixel diff,
 browser evidence, link checks, история и URL отчётов, recovery и обычные retries.
 CI проверяет весь путь на Linux. Это ещё не публичный сервис.
@@ -14,7 +14,8 @@ CI проверяет весь путь на Linux. Это ещё не публ�
 2. Среда runner: Docker backend очереди и cleanup после рестарта worker реализованы.
    Независимый janitor работает без worker/БД. Для deployment нужны его supervision
    и мониторинг. Разрешён только controlled fixture; запрет произвольных URL сохраняется.
-3. Hosting: измерить потребление, подготовить конфигурацию, секреты, миграции,
+3. Hosting: runner измерен, [смета и ограничения](deployment-sizing.md) записаны.
+   Подготовить конфигурацию, секреты, миграции,
    storage и резервное копирование. Платные ресурсы согласовать по конкретной смете.
 4. Проверка пользователем: один короткий сценарий original → baseline → regression
    → evidence → approve → repeat на опубликованном preview.
